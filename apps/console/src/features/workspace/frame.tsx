@@ -1,11 +1,13 @@
 "use client";
 
+import { Button, PageMain } from "@ezzi/ui";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { usePathname, useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useState } from "react";
 import { AppBar } from "@/shell/app-bar";
-import { authKey } from "./auth";
-import { roleName, roleNav } from "./roles";
+import { authKey, mfaKey } from "./auth";
+import { requiresMfa, roleName, roleNav } from "./roles";
 import { DeskProvider } from "./store";
 
 export function RoleFrame({
@@ -16,6 +18,11 @@ export function RoleFrame({
   children: ReactNode;
 }) {
   const path = usePathname();
+  const t = useTranslations("common");
+  const tRoles = useTranslations("roles");
+  const roleLabel = roleNav[role]
+    ? tRoles(`${role}.name`)
+    : roleName(role);
   const links = roleNav[role];
   const mode = path.endsWith("/sign-in")
     ? "sign-in"
@@ -23,18 +30,20 @@ export function RoleFrame({
       ? "register"
       : path.endsWith("/verify")
         ? "verify"
-        : null;
+        : path.endsWith("/mfa")
+          ? "mfa"
+          : null;
 
   if (!links) {
     return (
       <>
         <AppBar />
-        <main className="page">
-          <h1>That role is not on this page</h1>
-          <Link className="refresh" href="/">
-            Back to roles
-          </Link>
-        </main>
+        <PageMain>
+          <h1>{t("unknownRole")}</h1>
+          <Button variant="primary" asChild>
+            <Link href="/">{t("backToRoles")}</Link>
+          </Button>
+        </PageMain>
       </>
     );
   }
@@ -42,18 +51,18 @@ export function RoleFrame({
   if (mode) {
     return (
       <>
-        <AppBar section={roleName(role)} />
-        <main className="page">{children}</main>
+        <AppBar section={roleLabel} />
+        <PageMain className="auth-page">{children}</PageMain>
       </>
     );
   }
 
   return (
     <RequireSession role={role}>
-      <AppBar section={roleName(role)} />
+      <AppBar section={roleLabel} />
       <div className="frame">
-        <nav className="side" aria-label={roleName(role)}>
-          <p>{roleName(role)}</p>
+        <nav className="side" aria-label={roleLabel}>
+          <p>{roleLabel}</p>
           <SideLinks role={role} links={links} />
           <SignOut role={role} />
         </nav>
@@ -71,6 +80,9 @@ function RequireSession({
   children: ReactNode;
 }) {
   const router = useRouter();
+  const t = useTranslations("common");
+  const tRoles = useTranslations("roles");
+  const roleLabel = tRoles(`${role}.name`);
   const [email, setEmail] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
@@ -79,15 +91,18 @@ function RequireSession({
 
   useEffect(() => {
     if (email === null) router.replace(`/role/${role}/sign-in`);
+    else if (requiresMfa(role) && !sessionStorage.getItem(mfaKey(role))) {
+      router.replace(`/role/${role}/mfa`);
+    }
   }, [email, role, router]);
 
   if (!email) {
     return (
       <>
-        <AppBar section={roleName(role)} />
-        <main className="page" aria-busy="true">
-          <p className="kicker">Checking access</p>
-        </main>
+        <AppBar section={roleLabel} />
+        <PageMain aria-busy="true">
+          <p className="kicker">{t("checkingAccess")}</p>
+        </PageMain>
       </>
     );
   }
@@ -97,17 +112,18 @@ function RequireSession({
 
 function SignOut({ role }: { role: string }) {
   const router = useRouter();
+  const t = useTranslations("common");
   return (
-    <button
-      type="button"
-      className="side-out"
+    <Button
+      variant="side"
       onClick={() => {
         sessionStorage.removeItem(authKey(role));
+        sessionStorage.removeItem(mfaKey(role));
         router.push(`/role/${role}/sign-in`);
       }}
     >
-      Sign out
-    </button>
+      {t("signOut")}
+    </Button>
   );
 }
 
@@ -116,9 +132,10 @@ function SideLinks({
   links,
 }: {
   role: string;
-  links: readonly { href: string; label: string }[];
+  links: readonly { href: string; label: string; key: string }[];
 }) {
   const path = usePathname();
+  const t = useTranslations("nav");
 
   return (
     <>
@@ -127,12 +144,12 @@ function SideLinks({
         const current = link.href ? path.startsWith(href) : path === href;
         return (
           <Link
-            key={link.label}
+            key={link.key}
             href={href}
             scroll={false}
             aria-current={current ? "page" : undefined}
           >
-            {link.label}
+            {t(link.key)}
           </Link>
         );
       })}

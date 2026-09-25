@@ -3,7 +3,7 @@ description: Ezzi boundaries. Always on, kept short on purpose.
 alwaysApply: true
 ---
 
-Modular monolith. Dependency direction: domain <- application <- infrastructure <- apps and worker.
+Modular monolith. One web app (`apps/console`) for every persona; portal = role routes inside console, not a second Next app. Dependency direction: domain <- application <- infrastructure <- apps and worker.
 Domain and application never import Next.js, Drizzle, or provider SDKs.
 Modules talk only through `index.ts`, `./contracts`, or domain events. Never through another module's tables or internals.
 Routes, server actions, and proxy only parse input, build RequestContext, call a use-case, and map the result.

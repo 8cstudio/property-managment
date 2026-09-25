@@ -1,12 +1,16 @@
 "use client";
 
+import { Button, FieldError, Hint, Notice, PageMain } from "@ezzi/ui";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { isEmail } from "@/features/workspace/auth";
 import { useDesk } from "@/features/workspace/store";
 
 export default function RegisterOrganisationPage() {
   const { state, api } = useDesk();
+  const t = useTranslations("visit");
+  const tf = useTranslations("forms");
   const [company, setCompany] = useState("");
   const [contact, setContact] = useState("");
   const [email, setEmail] = useState("");
@@ -20,15 +24,12 @@ export default function RegisterOrganisationPage() {
   const [sent, setSent] = useState(false);
 
   return (
-    <main className="page">
-      <p className="kicker">Visitor</p>
-      <h1>Register organisation</h1>
-      <p className="hint">
-        This sends a request. Approving it creates the organisation, names the
-        first office, and invites you as organisation admin.
-      </p>
+    <PageMain>
+      <p className="kicker">{t("registerKicker")}</p>
+      <h1>{t("registerTitle")}</h1>
+      <Hint>{t("registerHint")}</Hint>
       {sent ? (
-        <p className="note">{state.notice}</p>
+        <Notice>{t("registerSent")}</Notice>
       ) : (
         <form
           className="form"
@@ -40,7 +41,7 @@ export default function RegisterOrganisationPage() {
             const person = contact.trim();
             const mail = email.trim();
             const office = branch.trim();
-            if (!name) next.company = "Enter the company name.";
+            if (!name) next.company = tf("errors.companyRequired");
             else if (
               state.orgs.some(
                 (org) => org.name.trim().toLowerCase() === name.toLowerCase(),
@@ -51,11 +52,11 @@ export default function RegisterOrganisationPage() {
                   item.company.trim().toLowerCase() === name.toLowerCase(),
               )
             ) {
-              next.company = "This organisation is already known.";
+              next.company = tf("errors.companyKnown");
             }
-            if (!person) next.contact = "Enter your name.";
-            if (!isEmail(mail)) next.email = "Enter a valid email address.";
-            if (!office) next.branch = "Enter the first office.";
+            if (!person) next.contact = tf("errors.contactRequired");
+            if (!isEmail(mail)) next.email = tf("errors.validEmail");
+            if (!office) next.branch = tf("errors.branchRequired");
             setErrors(next);
             if (Object.values(next).some(Boolean)) return;
             api.requestOrg({
@@ -68,7 +69,7 @@ export default function RegisterOrganisationPage() {
           }}
         >
           <label>
-            Company
+            {tf("company")}
             <input
               value={company}
               onChange={(event) => setCompany(event.target.value)}
@@ -77,10 +78,10 @@ export default function RegisterOrganisationPage() {
             />
           </label>
           {errors.company ? (
-            <p className="field-error">{errors.company}</p>
+            <FieldError>{errors.company}</FieldError>
           ) : null}
           <label>
-            Your name
+            {tf("yourName")}
             <input
               value={contact}
               onChange={(event) => setContact(event.target.value)}
@@ -89,10 +90,10 @@ export default function RegisterOrganisationPage() {
             />
           </label>
           {errors.contact ? (
-            <p className="field-error">{errors.contact}</p>
+            <FieldError>{errors.contact}</FieldError>
           ) : null}
           <label>
-            Email
+            {tf("email")}
             <input
               type="email"
               value={email}
@@ -102,9 +103,9 @@ export default function RegisterOrganisationPage() {
               required
             />
           </label>
-          {errors.email ? <p className="field-error">{errors.email}</p> : null}
+          {errors.email ? <FieldError>{errors.email}</FieldError> : null}
           <label>
-            First office
+            {tf("firstOffice")}
             <input
               value={branch}
               onChange={(event) => setBranch(event.target.value)}
@@ -113,16 +114,14 @@ export default function RegisterOrganisationPage() {
             />
           </label>
           {errors.branch ? (
-            <p className="field-error">{errors.branch}</p>
+            <FieldError>{errors.branch}</FieldError>
           ) : null}
-          <button type="submit" className="refresh">
-            Send request
-          </button>
+          <Button type="submit">{tf("sendRequest")}</Button>
         </form>
       )}
       <Link className="text-link" href="/visit">
-        Back
+        {t("registerBack")}
       </Link>
-    </main>
+    </PageMain>
   );
 }

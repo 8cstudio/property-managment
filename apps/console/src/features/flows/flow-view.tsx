@@ -1,5 +1,6 @@
 "use client";
 
+import { Card, PageMain } from "@ezzi/ui";
 import { useState } from "react";
 import { AppBar } from "@/shell/app-bar";
 import type { RoleFlow } from "./catalog";
@@ -15,7 +16,7 @@ export function FlowView({ flow }: { flow: RoleFlow }) {
   return (
     <>
       <AppBar section={flow.group === "portal" ? "PORTAL" : "CONSOLE"} />
-      <main className="page">
+      <PageMain>
         <p className="kicker">
           {flow.role} · step {index + 1} of {flow.steps.length}
         </p>
@@ -41,7 +42,7 @@ export function FlowView({ flow }: { flow: RoleFlow }) {
           ))}
         </ol>
 
-        <section className="panel">
+        <Card as="section">
           <p className="kicker" style={{ padding: "0.8rem 0.85rem 0" }}>
             {step.screen}
           </p>
@@ -53,7 +54,7 @@ export function FlowView({ flow }: { flow: RoleFlow }) {
               </li>
             ))}
           </ul>
-        </section>
+        </Card>
 
         <div className="flow-actions">
           <button
@@ -83,7 +84,7 @@ export function FlowView({ flow }: { flow: RoleFlow }) {
             </a>
           ) : null}
         </div>
-      </main>
+      </PageMain>
     </>
   );
 }

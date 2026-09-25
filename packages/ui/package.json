@@ -5,9 +5,21 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./tokens.css": "./src/tokens.css"
+    "./tokens.css": "./src/tokens.css",
+    "./charts": "./src/charts/index.ts"
   },
+  "sideEffects": [
+    "**/*.css"
+  ],
   "dependencies": {
+    "@radix-ui/react-dialog": "catalog:",
+    "@radix-ui/react-dropdown-menu": "catalog:",
+    "@radix-ui/react-label": "catalog:",
+    "@radix-ui/react-popover": "catalog:",
+    "@radix-ui/react-separator": "catalog:",
+    "@radix-ui/react-slot": "catalog:",
+    "@radix-ui/react-tabs": "catalog:",
+    "@radix-ui/react-tooltip": "catalog:",
     "@hookform/resolvers": "catalog:",
     "@tanstack/react-query": "catalog:",
     "@tanstack/react-table": "catalog:",
@@ -16,8 +28,10 @@
     "clsx": "catalog:",
     "cmdk": "catalog:",
     "lucide-react": "catalog:",
+    "motion": "catalog:",
     "next-intl": "catalog:",
     "next-themes": "catalog:",
+    "next": "catalog:",
     "nuqs": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",

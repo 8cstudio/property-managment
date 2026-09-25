@@ -1,9 +1,14 @@
 "use client";
 
+import { Button, IconButton } from "@ezzi/ui";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { APP_LOGO_TEXT } from "@/i18n/brand";
+import { LocaleSwitcher } from "./locale-switcher";
 
 export function ThemeToggle() {
+  const t = useTranslations("theme");
   const [theme, setTheme] = useState<"light" | "dark">("light");
 
   useEffect(() => {
@@ -22,14 +27,12 @@ export function ThemeToggle() {
   const toDark = theme !== "dark";
 
   return (
-    <button
-      type="button"
-      className="icon-btn"
+    <IconButton
       onClick={toggleTheme}
-      aria-label={toDark ? "Switch to dark" : "Switch to light"}
+      aria-label={toDark ? t("toDark") : t("toLight")}
     >
       {toDark ? <MoonIcon /> : <SunIcon />}
-    </button>
+    </IconButton>
   );
 }
 
@@ -51,16 +54,18 @@ function MoonIcon() {
 }
 
 export function AppBar({ section = "" }: { section?: string }) {
+  const t = useTranslations("common");
   return (
     <header className="topbar">
       <p className="brand">
-        EZZI
+        {APP_LOGO_TEXT}
         {section ? <span>{section}</span> : null}
       </p>
       <div className="top-actions">
-        <Link className="ghost" href="/">
-          Home
-        </Link>
+        <Button variant="ghost" asChild>
+          <Link href="/">{t("home")}</Link>
+        </Button>
+        <LocaleSwitcher />
         <ThemeToggle />
       </div>
     </header>

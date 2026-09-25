@@ -1,9 +1,75 @@
 "use client";
 
+import {
+  UnifiedAnalyticsDeck,
+  AsyncButton,
+  Badge,
+  Button,
+  DataTable,
+  DeskStack,
+  DeskToolbar,
+  FieldError,
+  FieldList,
+  Hint,
+  PageHeader,
+  SectionLabel,
+  StatGrid,
+  usePendingAction,
+  Work,
+} from "@ezzi/ui";
+import {
+  Activity,
+  AlertTriangle,
+  Building2,
+  Users as UsersIcon,
+} from "lucide-react";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { type ReactNode, useState } from "react";
 import { isEmail } from "./auth";
-import { useDesk } from "./store";
+import {
+  CreateListingWizard,
+  CreateMigrationProject,
+  CreateOrgWizard,
+  CreateRentScheduleForm,
+  IntegrationDetailPanel,
+  JobDetailPanel,
+  ListingDetailPanel,
+  MigrationDetailPanel,
+  OrgDetailPanel,
+  PropertyDetailPanel,
+  RentSchedulePanel,
+  RequirementDetailPanel,
+  SetupChecklist,
+  TenantOnboardingPanel,
+  UserDetailPanel,
+  CreateOfficePanel,
+  OfficeDetailPanel,
+} from "./panels";
+import type { DeskState } from "./data";
+import { orgOfficeNames } from "./data";
+import { managedOrgId } from "./org-scope";
+import { type DeskApi, useDesk } from "./store";
+import {
+  applicantTableFilters,
+  certificateTableFilters,
+  documentTableFilters,
+  integrationTableFilters,
+  jobTableFilters,
+  listingTableFilters,
+  migrationTableFilters,
+  paymentTableFilters,
+  propertyRowMeta,
+  propertyTableFilters,
+  requestTableFilters,
+  requirementTableFilters,
+  scheduleTableFilters,
+  statementTableFilters,
+  viewingTableFilters,
+  workRowMeta,
+  workTableFilters,
+} from "./table-filters";
 
 function Page({
   kicker,
@@ -14,86 +80,21 @@ function Page({
   title: string;
   children: ReactNode;
 }) {
-  const { state } = useDesk();
   return (
-    <main className="work">
-      <header className="page-title">
-        <p className="kicker">{kicker}</p>
-        <h1>{title}</h1>
-      </header>
-      {state.notice ? <p className="note">{state.notice}</p> : null}
+    <Work>
+      <PageHeader kicker={kicker} title={title} />
       {children}
-    </main>
+    </Work>
   );
 }
 
-function Figures({
-  items,
-}: {
-  items: readonly { href: string; value: number; label: string }[];
-}) {
-  return (
-    <ul className="counts">
-      {items.map((item) => (
-        <li key={item.label}>
-          <Link className="count" href={item.href}>
-            <strong>{item.value}</strong>
-            <span>{item.label}</span>
-          </Link>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function Table({
-  columns,
-  rows,
-}: {
-  columns: readonly string[];
-  rows: readonly { key: string; cells: ReactNode[] }[];
-}) {
-  return (
-    <div className="panel">
-      <table>
-        <thead>
-          <tr>
-            {columns.map((column) => (
-              <th key={column}>{column}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.key}>
-              {row.cells.map((cell, index) => (
-                <td key={`${row.key}-${index}`}>{cell}</td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function Fields({
-  rows,
-}: {
-  rows: readonly { label: string; value: string }[];
-}) {
-  return (
-    <section className="panel">
-      <ul className="field-list">
-        {rows.map((row) => (
-          <li key={row.label}>
-            <span>{row.label}</span>
-            <strong>{row.value}</strong>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
+function certBadgeTone(
+  status: string,
+): "overdue" | "today" | "open" | "neutral" {
+  if (status === "Overdue") return "overdue";
+  if (status === "Compliant") return "open";
+  if (status === "Due soon") return "today";
+  return "neutral";
 }
 
 export function RoleBody({
@@ -113,62 +114,161 @@ export function RoleBody({
 
 function Home({ role, base }: { role: string; base: string }) {
   const { state } = useDesk();
+  const t = useTranslations("dash");
+  const tc = useTranslations("col");
   if (role === "super-admin") {
     const failed = state.integrations.filter(
       (item) => item.status === "Failed",
     ).length;
     return (
-      <Page kicker="Platform" title="Across organisations">
-        <Figures
-          items={[
+      <Page kicker={t("platform")} title={t("acrossOrgs")}>
+        <UnifiedAnalyticsDeck
+          title={t("platformPulse")}
+          caption={t("platformPulseCaption")}
+          metrics={[
             {
+              key: "orgs",
               href: `${base}/organisations`,
               value: state.orgs.length,
-              label: "Organisations",
+              label: t("mOrganisations"),
+              badge: "Live",
             },
             {
+              key: "suspended",
               href: `${base}/organisations`,
               value: state.orgs.filter((item) => item.status === "Suspended")
                 .length,
-              label: "Suspended",
+              label: t("mSuspended"),
+              tone: "warn",
+              badge: "Watch",
             },
             {
+              key: "failed",
               href: `${base}/integrations`,
               value: failed,
-              label: "Failed connections",
+              label: t("mFailedConnections"),
+              tone: "warn",
             },
             {
+              key: "audit",
               href: `${base}/audit`,
               value: state.audit.length,
-              label: "Audit events",
+              label: t("mAuditEvents"),
+              tone: "calm",
             },
             {
+              key: "requests",
               href: `${base}/requests`,
               value: state.requests.filter(
                 (item) => item.status === "Requested",
               ).length,
-              label: "Organisation requests",
+              label: t("mOrgRequests"),
+              badge: "Inbox",
             },
           ]}
+          donuts={[
+            {
+              title: t("orgStatus"),
+              centerValue: String(state.orgs.length),
+              centerLabel: t("mOrganisations"),
+              segments: [
+                {
+                  name: "Active",
+                  value: state.orgs.filter((item) => item.status === "Active")
+                    .length,
+                },
+                {
+                  name: "Suspended",
+                  value: state.orgs.filter(
+                    (item) => item.status === "Suspended",
+                  ).length,
+                },
+                {
+                  name: "Setup",
+                  value: state.orgs.filter((item) => item.status === "Setup")
+                    .length,
+                },
+              ].filter((item) => item.value > 0),
+            },
+            {
+              title: t("connectionHealth"),
+              centerValue: String(state.integrations.length),
+              centerLabel: t("connectionHealth"),
+              segments: [
+                {
+                  name: "Connected",
+                  value: state.integrations.filter(
+                    (item) => item.status === "Connected",
+                  ).length,
+                },
+                {
+                  name: "Failed",
+                  value: failed,
+                },
+                {
+                  name: "Other",
+                  value: state.integrations.filter(
+                    (item) =>
+                      item.status !== "Connected" && item.status !== "Failed",
+                  ).length,
+                },
+              ].filter((item) => item.value > 0),
+            },
+          ]}
+          gauges={[
+            {
+              title: t("activeOrgRate"),
+              value: state.orgs.filter((item) => item.status === "Active")
+                .length,
+              max: Math.max(state.orgs.length, 1),
+              label: "Active",
+            },
+          ]}
+          bars={{
+            title: t("platformSnapshot"),
+            rows: [
+              { name: "Orgs", value: state.orgs.length },
+              { name: "Audit", value: state.audit.length },
+              {
+                name: "Requests",
+                value: state.requests.filter(
+                  (item) => item.status === "Requested",
+                ).length,
+              },
+              { name: "Failed", value: failed },
+            ],
+          }}
         />
-        <h2 className="section-label">Needs a look</h2>
-        <Table
-          columns={["Organisation", "Issue"]}
+        <div className="flow-actions">
+          <Button variant="primary" asChild>
+            <Link href={`${base}/organisations`}>{t("manageOrganisations")}</Link>
+          </Button>
+          <Link className="refresh" href={`${base}/requests`}>
+            {t("organisationRequests")}
+          </Link>
+        </div>
+        <SectionLabel>{t("needsALook")}</SectionLabel>
+        <DataTable
+          columns={[tc("organisation"), tc("issue")]}
           rows={state.integrations
             .filter((item) => item.status === "Failed")
             .map((item) => ({
               key: item.id,
               cells: [
-                <Link key="n" className="rowlink" href={`${base}/integrations`}>
+                <Link
+                  key="n"
+                  className="rowlink"
+                  href={`${base}/integrations/${item.id}`}
+                >
                   {state.orgs.find((org) => org.id === item.orgId)?.name}
                 </Link>,
                 item.name,
               ],
             }))}
         />
-        <h2 className="section-label">Failed sign-ins</h2>
-        <Table
-          columns={["Account", "When"]}
+        <SectionLabel>{t("failedSignins")}</SectionLabel>
+        <DataTable
+          columns={[tc("account"), tc("when")]}
           rows={state.security.map((item) => ({
             key: item.when,
             cells: [item.who, item.when],
@@ -181,37 +281,66 @@ function Home({ role, base }: { role: string; base: string }) {
   if (role === "org-admin") {
     const org =
       state.orgs.find((item) => item.id === "northbridge") ?? state.orgs[0];
+    const orgUsers = state.users.filter((user) => user.orgId === org?.id);
+    const openWork = state.work.filter((item) => item.state !== "Resolved");
     return (
-      <Page kicker={org?.name ?? "Organisation"} title="This organisation">
-        <Figures
-          items={[
+      <Page kicker={org?.name ?? "Organisation"} title={t("dashboard")}>
+        {org ? <SetupChecklist base={base} org={org} state={state} /> : null}
+        <UnifiedAnalyticsDeck
+          title={t("orgPulse")}
+          caption={t("orgPulseCaption")}
+          metrics={[
             {
+              key: "offices",
               href: `${base}/branches`,
-              value: org?.branches.length ?? 0,
-              label: "Offices",
+              value: org?.offices.length ?? 0,
+              label: t("mOffices"),
             },
             {
+              key: "users",
               href: `${base}/users`,
-              value: state.users.filter((user) => user.orgId === org?.id)
-                .length,
-              label: "Users",
+              value: orgUsers.length,
+              label: t("mUsers"),
+              badge: "Team",
             },
             {
-              href: `${base}/audit`,
-              value: state.work.filter((item) => item.state !== "Resolved")
+              key: "invited",
+              href: `${base}/users`,
+              value: orgUsers.filter((user) => user.status === "Invited")
                 .length,
-              label: "Open work",
+              label: t("mInvited"),
+              tone: "calm",
+            },
+            {
+              key: "work",
+              href: `${base}/audit`,
+              value: openWork.length,
+              label: t("mOpenWork"),
+              tone: "warn",
             },
           ]}
         />
         <p className="hint">
-          Offices: {org?.branches.join(", ") || "None yet"}. The count is how
-          many offices this organisation has. The first office is named when the
-          organisation is created. You add the rest from Offices.
+          {t("officesLine", {
+            offices: org ? orgOfficeNames(org).join(", ") : t("noneYet"),
+          })}
         </p>
         <p className="hint">
-          Certificate reminders go out {state.reminderDays} days before expiry.
+          {t("reminderLine", {
+            days: org?.settings.reminderDays ?? state.reminderDays,
+          })}
         </p>
+        <div className="flow-actions">
+          <Button variant="primary" asChild>
+            <Link href={`${base}/organisation`}>{t("manageOrganisation")}</Link>
+          </Button>
+          <Link className="refresh" href={`${base}/users`}>
+            {t("manageUsers")}
+          </Link>
+          <Link className="refresh" href={`${base}/branches`}>
+            {t("manageOffices")}
+          </Link>
+        </div>
       </Page>
     );
   }
@@ -219,15 +348,96 @@ function Home({ role, base }: { role: string; base: string }) {
   if (role === "operations" || role === "property") {
     const rows = role === "property" ? state.properties : state.work;
     return (
-      <Page
-        kicker="Today"
-        title={role === "property" ? "Properties" : "Needs a person"}
-      >
+      <Page kicker={t("today")} title={t("dashboard")}>
         {role === "operations" ? (
-          <Table
-            columns={["Due", "What", "Owner", "State"]}
+          <UnifiedAnalyticsDeck
+            title={t("queuePulse")}
+            caption={t("queuePulseCaption")}
+            metrics={[
+              {
+                key: "overdue",
+                href: `${base}/exceptions`,
+                value: state.work.filter((item) => item.state === "Overdue")
+                  .length,
+                label: t("mOverdue"),
+                tone: "warn",
+                badge: "Act",
+              },
+              {
+                key: "blocked",
+                href: `${base}/exceptions`,
+                value: state.work.filter((item) => item.state === "Blocked")
+                  .length,
+                label: t("mBlocked"),
+                tone: "warn",
+              },
+              {
+                key: "open",
+                href: `${base}`,
+                value: state.work.filter((item) => item.state === "Open")
+                  .length,
+                label: t("mOpen"),
+                tone: "calm",
+              },
+              {
+                key: "resolved",
+                href: `${base}/team`,
+                value: state.work.filter((item) => item.state === "Resolved")
+                  .length,
+                label: t("mResolved"),
+              },
+            ]}
+          />
+        ) : (
+          <UnifiedAnalyticsDeck
+            title={t("portfolioPulse")}
+            caption={t("portfolioPulseCaption")}
+            metrics={[
+              {
+                key: "occupied",
+                href: `${base}`,
+                value: state.properties.filter(
+                  (item) => item.status === "Occupied",
+                ).length,
+                label: t("mOccupied"),
+              },
+              {
+                key: "available",
+                href: `${base}`,
+                value: state.properties.filter(
+                  (item) => item.status === "Available",
+                ).length,
+                label: t("mAvailable"),
+                tone: "calm",
+              },
+              {
+                key: "void",
+                href: `${base}`,
+                value: state.properties.filter((item) => item.status === "Void")
+                  .length,
+                label: t("mVoid"),
+                tone: "warn",
+              },
+              {
+                key: "onboarding",
+                href: `${base}`,
+                value: state.properties.filter(
+                  (item) => item.status === "Onboarding",
+                ).length,
+                label: t("mOnboarding"),
+              },
+            ]}
+          />
+        )}
+        {role === "operations" ? (
+          <DataTable
+            caption={t("queue")}
+            searchPlaceholder="Search work, owner, place…"
+            filters={workTableFilters(state.work)}
+            columns={[tc("due"), tc("what"), tc("owner"), tc("state")]}
             rows={state.work.map((item) => ({
               key: item.id,
+              ...workRowMeta(item),
               cells: [
                 item.state,
                 <Link
@@ -239,20 +449,30 @@ function Home({ role, base }: { role: string; base: string }) {
                   <span className="place">{item.place}</span>
                 </Link>,
                 item.owner,
-                <span
+                <Badge
                   key="s"
-                  className={`tag ${item.state === "Overdue" ? "overdue" : item.state === "Blocked" ? "blocked" : "open"}`}
+                  tone={
+                    item.state === "Overdue"
+                      ? "overdue"
+                      : item.state === "Blocked"
+                        ? "blocked"
+                        : "open"
+                  }
                 >
                   {item.state}
-                </span>,
+                </Badge>,
               ],
             }))}
           />
         ) : (
-          <Table
-            columns={["Address", "Branch", "Status", "Tenancy"]}
+          <DataTable
+            caption={t("properties")}
+            searchPlaceholder="Search address, branch, tenancy…"
+            filters={propertyTableFilters(state.properties)}
+            columns={[tc("address"), tc("branch"), tc("status"), tc("tenancy")]}
             rows={state.properties.map((item) => ({
               key: item.id,
+              ...propertyRowMeta(item),
               cells: [
                 <Link
                   key="a"
@@ -269,7 +489,7 @@ function Home({ role, base }: { role: string; base: string }) {
           />
         )}
         <p className="place" style={{ color: "var(--ink-soft)" }}>
-          {rows.length} records in view.
+          {t("recordsInView", { count: rows.length })}
         </p>
       </Page>
     );
@@ -277,11 +497,58 @@ function Home({ role, base }: { role: string; base: string }) {
 
   if (role === "lettings") {
     return (
-      <Page kicker="Lettings" title="Available homes">
-        <Table
-          columns={["Address", "Portal", "Status"]}
+      <Page kicker={t("lettings")} title={t("dashboard")}>
+        <UnifiedAnalyticsDeck
+          title={t("lettingsPulse")}
+          caption={t("lettingsPulseCaption")}
+          metrics={[
+            {
+              key: "listings",
+              href: `${base}`,
+              value: state.listings.length,
+              label: t("mListings"),
+            },
+            {
+              key: "published",
+              href: `${base}`,
+              value: state.listings.filter((item) => item.status === "Published")
+                .length,
+              label: t("mPublished"),
+              tone: "calm",
+            },
+            {
+              key: "applicants",
+              href: `${base}/applicants`,
+              value: state.applicants.length,
+              label: t("mApplicants"),
+            },
+            {
+              key: "viewings",
+              href: `${base}/viewings`,
+              value: state.viewings.length,
+              label: t("mViewings"),
+              badge: "Live",
+            },
+          ]}
+        />
+        <DeskStack>
+          <DeskToolbar
+            title={t("newListing")}
+            description={t("newListingDesc")}
+          >
+            <Button variant="primary" asChild>
+              <Link href={`${base}/listings/new`}>{t("createListing")}</Link>
+            </Button>
+          </DeskToolbar>
+        <DataTable
+          caption={t("availableHomes")}
+          searchPlaceholder="Search address, portal, status…"
+          filters={listingTableFilters(state.listings)}
+          columns={[tc("address"), tc("portal"), tc("status")]}
           rows={state.listings.map((item) => ({
             key: item.id,
+            searchText: `${item.address} ${item.portal} ${item.status}`,
+            filterValues: { portal: item.portal, status: item.status },
             cells: [
               <Link
                 key="a"
@@ -295,17 +562,60 @@ function Home({ role, base }: { role: string; base: string }) {
             ],
           }))}
         />
+        </DeskStack>
       </Page>
     );
   }
 
   if (role === "compliance") {
+    const compliant = state.certificates.filter(
+      (item) => item.status === "Compliant",
+    ).length;
+    const overdue = state.certificates.filter(
+      (item) => item.status === "Overdue",
+    ).length;
+    const dueSoon = state.certificates.filter(
+      (item) => item.status === "Due soon",
+    ).length;
     return (
-      <Page kicker="Compliance" title="Evidence and expiry">
-        <Table
-          columns={["Property", "Type", "Expiry", "Status"]}
+      <Page kicker={t("compliance")} title={t("evidenceExpiry")}>
+        <UnifiedAnalyticsDeck
+          title={t("complianceRiver")}
+          caption={t("complianceRiverCaption")}
+          metrics={[
+            {
+              key: "compliant",
+              href: `${base}/certificates`,
+              value: compliant,
+              label: t("mCompliant"),
+              badge: "OK",
+            },
+            {
+              key: "soon",
+              href: `${base}/certificates`,
+              value: dueSoon,
+              label: t("mDueSoon"),
+              tone: "calm",
+            },
+            {
+              key: "overdue",
+              href: `${base}/certificates`,
+              value: overdue,
+              label: t("mOverdueCert"),
+              tone: "warn",
+              badge: "Act",
+            },
+          ]}
+        />
+        <DataTable
+          caption={t("certificateQueue")}
+          searchPlaceholder="Search property, type, status…"
+          filters={certificateTableFilters(state.certificates)}
+          columns={[tc("property"), tc("type"), tc("expiry"), tc("status")]}
           rows={state.certificates.map((item) => ({
             key: item.id,
+            searchText: `${item.property} ${item.type} ${item.status} ${item.expiry}`,
+            filterValues: { status: item.status, type: item.type },
             cells: [
               <Link
                 key="a"
@@ -316,12 +626,9 @@ function Home({ role, base }: { role: string; base: string }) {
               </Link>,
               item.type,
               item.expiry,
-              <span
-                key="s"
-                className={`tag ${item.status === "Overdue" ? "overdue" : item.status === "Compliant" ? "open" : "today"}`}
-              >
+              <Badge key="s" tone={certBadgeTone(item.status)}>
                 {item.status}
-              </span>,
+              </Badge>,
             ],
           }))}
         />
@@ -330,34 +637,59 @@ function Home({ role, base }: { role: string; base: string }) {
   }
 
   if (role === "finance") {
+    const matched = state.payments.filter(
+      (item) => item.status === "Matched",
+    ).length;
+    const unmatched = state.payments.filter(
+      (item) => item.status === "Unmatched",
+    ).length;
     return (
-      <Page kicker="Finance" title="Money that needs a decision">
-        <Figures
-          items={[
+      <Page kicker={t("finance")} title={t("moneyDecision")}>
+        <UnifiedAnalyticsDeck
+          title={t("cashDeskRiver")}
+          caption={t("cashDeskRiverCaption")}
+          metrics={[
             {
+              key: "unmatched",
               href: `${base}/payments`,
-              value: state.payments.filter(
-                (item) => item.status === "Unmatched",
-              ).length,
-              label: "Unmatched",
+              value: unmatched,
+              label: t("mUnmatched"),
+              tone: "warn",
+              badge: "Match",
             },
             {
+              key: "matched",
+              href: `${base}/payments`,
+              value: matched,
+              label: t("mMatched"),
+              tone: "accent",
+            },
+            {
+              key: "arrears",
               href: `${base}/arrears`,
               value: state.arrears.length,
-              label: "Arrears cases",
+              label: t("mArrears"),
+              tone: "warn",
             },
             {
+              key: "drafts",
               href: `${base}/statements`,
               value: state.statements.filter((item) => item.status === "Draft")
                 .length,
-              label: "Draft statements",
+              label: t("mDraftStatements"),
+              tone: "calm",
             },
           ]}
         />
-        <Table
-          columns={["Amount", "Reference", "Tenancy", "Status"]}
+        <DataTable
+          caption={t("paymentsDesk")}
+          searchPlaceholder="Search amount, reference, tenancy…"
+          filters={paymentTableFilters(state.payments)}
+          columns={[tc("amount"), tc("reference"), tc("tenancy"), tc("status")]}
           rows={state.payments.map((item) => ({
             key: item.id,
+            searchText: `${item.amount} ${item.reference} ${item.tenancy} ${item.status}`,
+            filterValues: { status: item.status },
             cells: [
               item.amount,
               <Link
@@ -378,11 +710,58 @@ function Home({ role, base }: { role: string; base: string }) {
 
   if (role === "migration") {
     return (
-      <Page kicker="Migration" title="Agency imports">
-        <Table
-          columns={["Agency", "Source", "Stage"]}
+      <Page kicker={t("migration")} title={t("dashboard")}>
+        <UnifiedAnalyticsDeck
+          title={t("importPulse")}
+          caption={t("importPulseCaption")}
+          metrics={[
+            {
+              key: "mapped",
+              href: `${base}`,
+              value: state.migrations.filter((item) => item.stage === "Mapped")
+                .length,
+              label: t("mMapped"),
+            },
+            {
+              key: "dry",
+              href: `${base}`,
+              value: state.migrations.filter(
+                (item) => item.stage === "Dry run",
+              ).length,
+              label: t("mDryRun"),
+              tone: "calm",
+            },
+            {
+              key: "live",
+              href: `${base}`,
+              value: state.migrations.filter((item) => item.stage === "Live")
+                .length,
+              label: t("mLive"),
+              badge: "Cutover",
+            },
+            {
+              key: "total",
+              href: `${base}`,
+              value: state.migrations.length,
+              label: t("mProjects"),
+            },
+          ]}
+        />
+        <DeskStack>
+          <DeskToolbar title={t("newProject")} description={t("newProjectDesc")}>
+            <Button variant="primary" asChild>
+              <Link href={`${base}/projects/new`}>{t("newMigrationProject")}</Link>
+            </Button>
+          </DeskToolbar>
+        <DataTable
+          caption={t("agencyImports")}
+          searchPlaceholder="Search agency, source, stage…"
+          filters={migrationTableFilters(state.migrations)}
+          columns={[tc("agency"), tc("source"), tc("stage")]}
           rows={state.migrations.map((item) => ({
             key: item.id,
+            searchText: `${item.agency} ${item.source} ${item.stage}`,
+            filterValues: { stage: item.stage, source: item.source },
             cells: [
               <Link
                 key="a"
@@ -396,6 +775,7 @@ function Home({ role, base }: { role: string; base: string }) {
             ],
           }))}
         />
+        </DeskStack>
       </Page>
     );
   }
@@ -403,27 +783,44 @@ function Home({ role, base }: { role: string; base: string }) {
   if (role === "landlord") {
     const mine = state.properties.filter((item) => item.orgId === "harbour");
     return (
-      <Page kicker="Your portfolio" title="Harbour Housing">
-        <Figures
-          items={[
+      <Page kicker={t("yourPortfolio")} title={t("dashboard")}>
+        <UnifiedAnalyticsDeck
+          title={t("portfolioPulse")}
+          caption={t("portfolioPulseCaption")}
+          metrics={[
             {
+              key: "homes",
+              href: `${base}`,
+              value: mine.length,
+              label: t("properties"),
+            },
+            {
+              key: "approvals",
               href: `${base}/approvals`,
               value: state.jobs.filter(
                 (item) => item.status === "Waiting approval",
               ).length,
-              label: "Need your approval",
+              label: t("mNeedApproval"),
+              tone: "warn",
+              badge: "Act",
             },
             {
+              key: "statements",
               href: `${base}/statements`,
               value: state.statements.length,
-              label: "Statements",
+              label: t("mStatements"),
+              tone: "calm",
             },
           ]}
         />
-        <Table
-          columns={["Property", "Status", "Tenancy"]}
+        <DataTable
+          caption={t("yourProperties")}
+          searchPlaceholder="Search address, tenancy…"
+          filters={propertyTableFilters(mine)}
+          columns={[tc("property"), tc("status"), tc("tenancy")]}
           rows={mine.map((item) => ({
             key: item.id,
+            ...propertyRowMeta(item),
             cells: [
               <Link
                 key="a"
@@ -443,26 +840,52 @@ function Home({ role, base }: { role: string; base: string }) {
 
   if (role === "tenant") {
     const next = state.onboarding.find((item) => item.state !== "Complete");
+    const openSteps = state.onboarding.filter(
+      (item) => item.state !== "Complete",
+    ).length;
+    const myJobs = state.jobs.filter(
+      (item) => item.address.includes("Queen") || item.status === "Submitted",
+    );
     return (
-      <Page kicker="22 Queen's Road" title="What you need to do">
+      <Page kicker="22 Queen's Road" title={t("dashboard")}>
+        <UnifiedAnalyticsDeck
+          title={t("tenancyPulse")}
+          caption={t("tenancyPulseCaption")}
+          metrics={[
+            {
+              key: "steps",
+              href: `${base}/onboarding`,
+              value: openSteps,
+              label: t("mOpenSteps"),
+              ...(openSteps > 0 ? { tone: "warn" as const } : {}),
+            },
+            {
+              key: "repairs",
+              href: `${base}/maintenance`,
+              value: myJobs.length,
+              label: t("mRepairItems"),
+              tone: "calm",
+            },
+          ]}
+        />
         <section className="panel">
           <ul className="field-list">
             <li>
-              <span>Next step</span>
-              <strong>{next ? next.title : "Nothing waiting on you"}</strong>
+              <span>{t("nextStep")}</span>
+              <strong>{next ? next.title : t("nothingWaiting")}</strong>
             </li>
             <li>
-              <span>Rent this month</span>
+              <span>{t("rentThisMonth")}</span>
               <strong>£1,150</strong>
             </li>
           </ul>
         </section>
         <div className="flow-actions">
           <Link className="refresh" href={`${base}/onboarding`}>
-            Open checklist
+            {t("openChecklist")}
           </Link>
           <Link className="refresh" href={`${base}/maintenance`}>
-            Report a repair
+            {t("reportRepair")}
           </Link>
         </div>
       </Page>
@@ -476,11 +899,42 @@ function Home({ role, base }: { role: string; base: string }) {
       item.status === "Scheduled",
   );
   return (
-    <Page kicker="Assigned to you" title="Jobs">
-      <Table
-        columns={["Job", "Address", "Status"]}
+    <Page kicker={t("assignedToYou")} title={t("dashboard")}>
+      <UnifiedAnalyticsDeck
+        title={t("jobsPulse")}
+        caption={t("jobsPulseCaption")}
+        metrics={[
+          {
+            key: "scheduled",
+            href: `${base}`,
+            value: mine.filter((item) => item.status === "Scheduled").length,
+            label: t("mScheduled"),
+            tone: "calm",
+          },
+          {
+            key: "assigned",
+            href: `${base}`,
+            value: mine.filter((item) => item.status === "Assigned").length,
+            label: t("mAssigned"),
+          },
+          {
+            key: "active",
+            href: `${base}`,
+            value: mine.length,
+            label: t("mInView"),
+            badge: "Live",
+          },
+        ]}
+      />
+      <DataTable
+        caption={t("yourJobs")}
+        searchPlaceholder="Search job, address, status…"
+        filters={jobTableFilters(mine)}
+        columns={[tc("job"), tc("address"), tc("status")]}
         rows={mine.map((item) => ({
           key: item.id,
+          searchText: `${item.title} ${item.address} ${item.status}`,
+          filterValues: { status: item.status },
           cells: [
             <Link key="t" className="rowlink" href={`${base}/jobs/${item.id}`}>
               {item.title}
@@ -504,34 +958,65 @@ function List({
   base: string;
 }) {
   const { state, api } = useDesk();
+  const t = useTranslations("list");
+  const tc = useTranslations("col");
 
   if (screen === "organisations") {
     return (
-      <Page kicker="Platform" title="Organisations">
-        <Link className="refresh" href={`${base}/organisations/new`}>
-          Create organisation
-        </Link>
-        <p className="hint">
-          Offices are the names in the last column. The first office is set when
-          the organisation is created. The organisation admin adds more.
-        </p>
-        <Table
-          columns={["Name", "Status", "Offices"]}
-          rows={state.orgs.map((item) => ({
-            key: item.id,
-            cells: [
-              <Link
-                key="n"
-                className="rowlink"
-                href={`${base}/organisations/${item.id}`}
-              >
-                {item.name}
-              </Link>,
-              item.status,
-              item.branches.join(", ") || "None",
-            ],
-          }))}
-        />
+      <Page kicker={t("organisations")} title={t("organisations")}>
+        <DeskStack>
+          <DeskToolbar
+            title={t("tenantOrgs")}
+            description={t("tenantOrgsDesc")}
+          >
+            <Button variant="primary" asChild>
+              <Link href={`${base}/organisations/new`}>
+                {t("createOrganisation")}
+              </Link>
+            </Button>
+          </DeskToolbar>
+          <DataTable
+            caption={t("allOrganisations")}
+            searchable
+            searchPlaceholder={t("orgNameOrOffice")}
+            filters={[
+              {
+                id: "status",
+                label: tc("status"),
+                options: [
+                  { value: "", label: t("allStatuses") },
+                  { value: "Active", label: "Active" },
+                  { value: "Setup", label: "Setup" },
+                  { value: "Suspended", label: "Suspended" },
+                ],
+              },
+            ]}
+            columns={[tc("name"), tc("status"), tc("offices"), ""]}
+            rows={state.orgs.map((item) => ({
+              key: item.id,
+              searchText: `${item.name} ${item.status} ${orgOfficeNames(item).join(" ")}`,
+              filterValues: { status: item.status },
+              cells: [
+                <Link
+                  key="n"
+                  className="rowlink"
+                  href={`${base}/organisations/${item.id}`}
+                >
+                  {item.name}
+                </Link>,
+                item.status,
+                orgOfficeNames(item).join(", ") || t("none"),
+                <Link
+                  key="m"
+                  className="refresh"
+                  href={`${base}/organisations/${item.id}`}
+                >
+                  {t("manage")}
+                </Link>,
+              ],
+            }))}
+          />
+        </DeskStack>
       </Page>
     );
   }
@@ -541,23 +1026,70 @@ function List({
   }
 
   if (screen === "integrations") {
+    const orgScope =
+      role === "org-admin"
+        ? state.orgs.find((o) => o.id === "northbridge")?.id
+        : null;
+    const rows = state.integrations.filter((item) =>
+      orgScope ? item.orgId === orgScope : true,
+    );
     return (
-      <Page kicker="Connections" title="Integrations">
-        <Table
-          columns={["Provider", "Status", ""]}
-          rows={state.integrations.map((item) => ({
+      <Page kicker={t("connections")} title={t("integrations")}>
+        <p className="hint">{t("integrationsHint")}</p>
+        <DataTable
+          caption={t("allConnections")}
+          searchPlaceholder={t("connectionsSearch")}
+          filters={integrationTableFilters(rows)}
+          columns={[tc("provider"), tc("organisation"), tc("status"), tc("lastSync"), ""]}
+          rows={rows.map((item) => {
+            const org = state.orgs.find((row) => row.id === item.orgId);
+            return {
+              key: item.id,
+              searchText: `${item.name} ${item.status} ${org?.name ?? ""}`,
+              filterValues: { status: item.status },
+              cells: [
+                <Link
+                  key="n"
+                  className="rowlink"
+                  href={`${base}/integrations/${item.id}`}
+                >
+                  {item.name}
+                </Link>,
+                org?.name ?? item.orgId,
+                item.status,
+                item.lastSyncAt,
+                <Link key="c" className="refresh" href={`${base}/integrations/${item.id}`}>
+                  {t("open")}
+                </Link>,
+              ],
+            };
+          })}
+        />
+      </Page>
+    );
+  }
+
+  if (screen === "modules") {
+    return (
+      <Page kicker={t("organisations")} title={t("moduleAccess")}>
+        <p className="hint">{t("moduleHint")}</p>
+        <DataTable
+          caption={t("organisations")}
+          searchPlaceholder={t("orgSearch")}
+          columns={[tc("organisation"), tc("status"), ""]}
+          rows={state.orgs.map((item) => ({
             key: item.id,
+            searchText: item.name,
             cells: [
               item.name,
               item.status,
-              <button
-                key="b"
-                type="button"
+              <Link
+                key="m"
                 className="refresh"
-                onClick={() => api.testIntegration(item.id)}
+                href={`${base}/organisations/${item.id}`}
               >
-                Test connection
-              </button>,
+                {t("manageModules")}
+              </Link>,
             ],
           }))}
         />
@@ -565,35 +1097,43 @@ function List({
     );
   }
 
-  if (screen === "modules") {
-    const org = state.orgs[0];
+  if (screen === "organisation" && role === "org-admin") {
     return (
-      <Page kicker={org?.name ?? ""} title="Module access">
-        <div className="flow-actions" style={{ flexWrap: "wrap" }}>
-          {org
-            ? Object.entries(org.modules).map(([name, on]) => (
-                <button
-                  key={name}
-                  type="button"
-                  className="refresh"
-                  onClick={() => api.toggleModule(org.id, name)}
-                >
-                  {name}: {on ? "On" : "Off"}
-                </button>
-              ))
-            : null}
-        </div>
-      </Page>
+      <OrgDetailPanel
+        orgId={managedOrgId(state)}
+        base={`${base}/organisation`}
+        integrationsBase={base}
+        usersBase={base}
+        officesBase={base}
+        platformAdmin={false}
+      />
+    );
+  }
+
+  if (screen === "settings" && role === "org-admin") {
+    return (
+      <OrgDetailPanel
+        orgId={managedOrgId(state)}
+        base={`${base}/organisation`}
+        integrationsBase={base}
+        usersBase={base}
+        officesBase={base}
+        platformAdmin={false}
+        initialTab="settings"
+      />
     );
   }
 
   if (screen === "audit") {
     return (
-      <Page kicker="Recorded changes" title="Audit">
-        <Table
-          columns={["When", "Who", "What"]}
+      <Page kicker={t("recordedChanges")} title={t("audit")}>
+        <DataTable
+          caption={t("auditLog")}
+          searchPlaceholder={t("auditSearch")}
+          columns={[tc("when"), tc("who"), tc("what")]}
           rows={state.audit.map((item) => ({
             key: item.id,
+            searchText: `${item.when} ${item.actor} ${item.action} ${item.org}`,
             cells: [item.when, item.actor, item.action],
           }))}
         />
@@ -603,18 +1143,18 @@ function List({
 
   if (screen === "reports") {
     return (
-      <Page kicker="Platform" title="Reports">
-        <Figures
+      <Page kicker={t("organisations")} title={t("reports")}>
+        <StatGrid
           items={[
             {
               href: `${base}/organisations`,
               value: state.orgs.length,
-              label: "Organisations",
+              label: t("organisations"),
             },
             {
               href: `${base}/audit`,
               value: state.audit.length,
-              label: "Changes today",
+              label: t("changesToday"),
             },
           ]}
         />
@@ -623,37 +1163,42 @@ function List({
   }
 
   if (screen === "branches") {
-    return <Branches />;
+    return <Branches base={base} />;
   }
 
   if (screen === "requests") {
     return (
-      <Page kicker="Platform" title="Organisation requests">
-        <p className="hint">
-          A visitor asks to register. Approving creates the organisation and its
-          first office, then invites their email as organisation admin.
-        </p>
-        <Table
-          columns={["Company", "Office", "Contact", "Status"]}
-          rows={state.requests.map((item) => ({
-            key: item.id,
-            cells: [
-              <Link
-                key="c"
-                className="rowlink"
-                href={`${base}/requests/${item.id}`}
-              >
-                {item.company}
-              </Link>,
-              item.branch,
-              item.email,
-              item.status,
-            ],
-          }))}
-        />
-        {state.requests.length === 0 ? (
-          <p className="hint">No requests yet.</p>
-        ) : null}
+      <Page kicker={t("organisations")} title={t("orgRequests")}>
+        <DeskStack>
+          <DeskToolbar
+            title={t("visitorRequests")}
+            description={t("visitorRequestsDesc")}
+          />
+          <DataTable
+            caption={t("requestsCaption")}
+            emptyMessage={t("requestsEmpty")}
+            searchPlaceholder={t("requestsSearch")}
+            filters={requestTableFilters(state.requests)}
+            columns={[tc("company"), tc("office"), tc("contact"), tc("status")]}
+            rows={state.requests.map((item) => ({
+              key: item.id,
+              searchText: `${item.company} ${item.branch} ${item.email} ${item.contact} ${item.status}`,
+              filterValues: { status: item.status },
+              cells: [
+                <Link
+                  key="c"
+                  className="rowlink"
+                  href={`${base}/requests/${item.id}`}
+                >
+                  {item.company}
+                </Link>,
+                item.branch,
+                item.email,
+                item.status,
+              ],
+            }))}
+          />
+        </DeskStack>
       </Page>
     );
   }
@@ -665,11 +1210,13 @@ function List({
   if (screen === "team") {
     const owners = ["Unassigned", "A. Okonkwo", "L. Shah"];
     return (
-      <Page kicker="Workload" title="Who is holding work">
-        <Table
-          columns={["Person", "Open items"]}
+      <Page kicker={t("workload")} title={t("whoHolding")}>
+        <DataTable
+          searchPlaceholder={t("personSearch")}
+          columns={[tc("person"), tc("openItems")]}
           rows={owners.map((owner) => ({
             key: owner,
+            searchText: owner,
             cells: [
               owner,
               String(
@@ -687,11 +1234,14 @@ function List({
   if (screen === "exceptions") {
     const blocked = state.work.filter((item) => item.state === "Blocked");
     return (
-      <Page kicker="Blocked" title="Exceptions">
-        <Table
-          columns={["Item", "Where"]}
+      <Page kicker={t("blocked")} title={t("exceptions")}>
+        <DataTable
+          searchPlaceholder={t("blockedSearch")}
+          filters={workTableFilters(blocked)}
+          columns={[tc("item"), tc("where")]}
           rows={blocked.map((item) => ({
             key: item.id,
+            ...workRowMeta(item),
             cells: [
               <Link
                 key="t"
@@ -710,13 +1260,16 @@ function List({
 
   if (screen === "tenancies") {
     return (
-      <Page kicker="Tenancies" title="Current tenancies">
-        <Table
-          columns={["Address", "Tenancy"]}
+      <Page kicker={t("tenancies")} title={t("currentTenancies")}>
+        <DataTable
+          searchPlaceholder={t("tenanciesSearch")}
+          filters={propertyTableFilters(state.properties)}
+          columns={[tc("address"), tc("tenancy")]}
           rows={state.properties
             .filter((item) => item.tenancy !== "None")
             .map((item) => ({
               key: item.id,
+              ...propertyRowMeta(item),
               cells: [
                 <Link
                   key="a"
@@ -735,11 +1288,15 @@ function List({
 
   if (screen === "applicants") {
     return (
-      <Page kicker="Lettings" title="Applicants">
-        <Table
-          columns={["Name", "Property", "Stage"]}
+      <Page kicker={t("lettings")} title={t("applicants")}>
+        <DataTable
+          searchPlaceholder={t("applicantsSearch")}
+          filters={applicantTableFilters(state.applicants)}
+          columns={[tc("name"), tc("property"), tc("stage")]}
           rows={state.applicants.map((item) => ({
             key: item.id,
+            searchText: `${item.name} ${item.property} ${item.stage}`,
+            filterValues: { stage: item.stage },
             cells: [
               <Link
                 key="n"
@@ -759,11 +1316,15 @@ function List({
 
   if (screen === "viewings") {
     return (
-      <Page kicker="Lettings" title="Viewings">
-        <Table
-          columns={["When", "Property", "Outcome"]}
+      <Page kicker={t("lettings")} title={t("viewings")}>
+        <DataTable
+          searchPlaceholder={t("viewingsSearch")}
+          filters={viewingTableFilters(state.viewings)}
+          columns={[tc("when"), tc("property"), tc("outcome")]}
           rows={state.viewings.map((item) => ({
             key: item.id,
+            searchText: `${item.when} ${item.property} ${item.applicant} ${item.outcome}`,
+            filterValues: { outcome: item.outcome },
             cells: [
               item.when,
               <Link
@@ -783,11 +1344,15 @@ function List({
 
   if (screen === "certificates") {
     return (
-      <Page kicker="Compliance" title="Certificates">
-        <Table
-          columns={["Property", "Type", "Status"]}
+      <Page kicker={t("compliance")} title={t("certificates")}>
+        <DataTable
+          searchPlaceholder={t("certificatesSearch")}
+          filters={certificateTableFilters(state.certificates)}
+          columns={[tc("property"), tc("type"), tc("status")]}
           rows={state.certificates.map((item) => ({
             key: item.id,
+            searchText: `${item.property} ${item.type} ${item.status}`,
+            filterValues: { status: item.status, type: item.type },
             cells: [
               <Link
                 key="p"
@@ -808,16 +1373,20 @@ function List({
   if (screen === "payments") {
     return (
       <Page
-        kicker="Finance"
-        title={role === "tenant" ? "Your rent" : "Payments"}
+        kicker={t("finance")}
+        title={role === "tenant" ? t("yourRent") : t("payments")}
       >
-        <Table
-          columns={["Amount", "Reference", "Status"]}
+        <DataTable
+          searchPlaceholder={t("paymentsSearch")}
+          filters={paymentTableFilters(state.payments)}
+          columns={[tc("amount"), tc("reference"), tc("status")]}
           rows={(role === "tenant"
             ? state.payments.filter((item) => item.tenancy.includes("Queen"))
             : state.payments
           ).map((item) => ({
             key: item.id,
+            searchText: `${item.amount} ${item.reference} ${item.status}`,
+            filterValues: { status: item.status },
             cells: [
               item.amount,
               role === "tenant" ? (
@@ -841,11 +1410,13 @@ function List({
 
   if (screen === "arrears") {
     return (
-      <Page kicker="Finance" title="Arrears">
-        <Table
-          columns={["Place", "Short", "Age"]}
+      <Page kicker={t("finance")} title={t("arrears")}>
+        <DataTable
+          searchPlaceholder={t("arrearsSearch")}
+          columns={[tc("place"), tc("short"), tc("age")]}
           rows={state.arrears.map((item) => ({
             key: item.id,
+            searchText: `${item.place} ${item.amount} ${item.age} ${item.plan}`,
             cells: [
               <Link
                 key="p"
@@ -865,11 +1436,15 @@ function List({
 
   if (screen === "statements") {
     return (
-      <Page kicker="Finance" title="Statements">
-        <Table
-          columns={["Who", "Period", "Status"]}
+      <Page kicker={t("finance")} title={t("statements")}>
+        <DataTable
+          searchPlaceholder={t("statementsSearch")}
+          filters={statementTableFilters(state.statements)}
+          columns={[tc("who"), tc("period"), tc("status")]}
           rows={state.statements.map((item) => ({
             key: item.id,
+            searchText: `${item.landlord} ${item.period} ${item.status}`,
+            filterValues: { status: item.status },
             cells: [
               <Link
                 key="l"
@@ -890,11 +1465,15 @@ function List({
   if (screen === "approvals") {
     const waiting = state.jobs.filter((item) => item.quote);
     return (
-      <Page kicker="Your decision" title="Approvals">
-        <Table
-          columns={["Job", "Quote", "Status"]}
+      <Page kicker={t("yourDecision")} title={t("approvals")}>
+        <DataTable
+          searchPlaceholder={t("approvalsSearch")}
+          filters={jobTableFilters(waiting)}
+          columns={[tc("job"), tc("quote"), tc("status")]}
           rows={waiting.map((item) => ({
             key: item.id,
+            searchText: `${item.title} ${item.quote} ${item.status}`,
+            filterValues: { status: item.status },
             cells: [
               <Link
                 key="t"
@@ -913,43 +1492,17 @@ function List({
   }
 
   if (screen === "onboarding") {
-    return (
-      <Page kicker="Checklist" title="Move-in steps">
-        <div className="panel">
-          <ul className="field-list">
-            {state.onboarding.map((item) => (
-              <li key={item.id}>
-                <span>
-                  {item.title}
-                  <span className="place">{item.state}</span>
-                </span>
-                {item.state === "Complete" ? (
-                  <strong>Done</strong>
-                ) : (
-                  <button
-                    type="button"
-                    className="refresh"
-                    onClick={() => api.submitStep(item.id)}
-                  >
-                    Submit
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
-      </Page>
-    );
+    return <TenantOnboardingPanel />;
   }
 
   if (screen === "tenancy") {
     return (
-      <Page kicker="Your tenancy" title="22 Queen's Road">
-        <Fields
+      <Page kicker={t("yourTenancy")} title="22 Queen's Road">
+        <FieldList
           rows={[
-            { label: "Agreement", value: "Waiting on signature" },
-            { label: "Rent", value: "£1,150 monthly" },
-            { label: "Other tenants", value: "Not shown" },
+            { label: t("agreement"), value: t("waitingSignature") },
+            { label: t("rent"), value: t("rentMonthly") },
+            { label: t("otherTenants"), value: t("notShown") },
           ]}
         />
       </Page>
@@ -960,19 +1513,149 @@ function List({
     return <RepairForm />;
   }
 
+  if (screen === "documents") {
+    const docs =
+      role === "landlord" || role === "tenant"
+        ? state.documents.filter((row) => row.orgId === "harbour" || row.orgId === "northbridge")
+        : state.documents;
+    return (
+      <DocumentsPage role={role} docs={docs} api={api} />
+    );
+  }
+
+  if (screen === "requirements") {
+    return (
+      <Page kicker={t("compliance")} title={t("requirements")}>
+        <DataTable
+          caption={t("requirementTemplates")}
+          searchPlaceholder={t("requirementsSearch")}
+          filters={requirementTableFilters(state.requirements)}
+          columns={[tc("requirement"), tc("appliesTo"), tc("frequency"), tc("status")]}
+          rows={state.requirements.map((item) => ({
+            key: item.id,
+            searchText: `${item.name} ${item.appliesTo} ${item.frequency} ${item.status}`,
+            filterValues: { status: item.status },
+            cells: [
+              <Link
+                key="n"
+                className="rowlink"
+                href={`${base}/requirements/${item.id}`}
+              >
+                {item.name}
+              </Link>,
+              item.appliesTo,
+              item.frequency,
+              item.status,
+            ],
+          }))}
+        />
+      </Page>
+    );
+  }
+
+  if (screen === "schedules") {
+    return (
+      <Page kicker={t("finance")} title={t("rentSchedules")}>
+        <DeskStack>
+          <CreateRentScheduleForm base={`${base}/schedules`} />
+          <DataTable
+            caption={t("expectedCharges")}
+            searchPlaceholder={t("scheduleSearch")}
+            filters={scheduleTableFilters(state.rentSchedules)}
+            columns={[tc("tenancy"), tc("amount"), tc("frequency"), tc("status")]}
+            rows={state.rentSchedules.map((item) => ({
+              key: item.id,
+              searchText: `${item.tenancy} ${item.amount} ${item.frequency} ${item.status}`,
+              filterValues: {
+                status: item.status,
+                frequency: item.frequency,
+              },
+              cells: [
+                <Link
+                  key="t"
+                  className="rowlink"
+                  href={`${base}/schedules/${item.id}`}
+                >
+                  {item.tenancy}
+                </Link>,
+                item.amount,
+                item.frequency,
+                item.status,
+              ],
+            }))}
+          />
+        </DeskStack>
+      </Page>
+    );
+  }
+
+  if (screen === "maintenance" && role === "operations") {
+    return (
+      <Page kicker={t("operations")} title={t("maintenanceQueue")}>
+        <DataTable
+          caption={t("issuesWorkOrders")}
+          searchPlaceholder={t("maintenanceSearch")}
+          columns={[tc("job"), tc("address"), tc("status"), tc("assignee")]}
+          rows={state.jobs.map((item) => ({
+            key: item.id,
+            cells: [
+              <Link
+                key="t"
+                className="rowlink"
+                href={`${base.replace("/operations", "/contractor")}/jobs/${item.id}`}
+              >
+                {item.title}
+              </Link>,
+              item.address,
+              item.status,
+              item.assignee,
+            ],
+          }))}
+        />
+      </Page>
+    );
+  }
+
+  if (screen === "properties" && role === "operations") {
+    return (
+      <Page kicker={t("operations")} title={t("properties")}>
+        <DataTable
+          caption={t("portfolio")}
+          searchPlaceholder={t("propertiesSearch")}
+          columns={[tc("address"), tc("office"), tc("status"), tc("tenancy")]}
+          rows={state.properties.map((item) => ({
+            key: item.id,
+            cells: [
+              <Link
+                key="a"
+                className="rowlink"
+                href={`${base.replace("/operations", "/property")}/properties/${item.id}`}
+              >
+                {item.address}
+              </Link>,
+              item.branch,
+              item.status,
+              item.tenancy,
+            ],
+          }))}
+        />
+      </Page>
+    );
+  }
+
   if (screen === "profile") {
     return (
-      <Page kicker="Contact" title="Your details">
-        <Fields
+      <Page kicker={t("contact2")} title={t("yourDetails")}>
+        <FieldList
           rows={[
             {
-              label: "Name",
+              label: t("profileName"),
               value: role === "landlord" ? "Harbour portfolio" : "J. Adeyemi",
             },
-            { label: "Phone", value: "07700 900123" },
+            { label: t("phone"), value: "07700 900123" },
             {
-              label: "Change",
-              value: "Saved on the shared contact and audited",
+              label: t("change"),
+              value: t("changeValue"),
             },
           ]}
         />
@@ -981,9 +1664,9 @@ function List({
   }
 
   return (
-    <Page kicker="Missing" title="This page is not in this role">
+    <Page kicker={t("missing")} title={t("notInRole")}>
       <Link className="refresh" href={base}>
-        Back to the desk
+        {t("backToDesk")}
       </Link>
     </Page>
   );
@@ -1001,13 +1684,77 @@ function Detail({
   base: string;
 }) {
   const { state } = useDesk();
+  const t = useTranslations("detail");
+  const td = useTranslations("dash");
+  const tl = useTranslations("list");
+  const tf = useTranslations("forms");
+  const tc = useTranslations("common");
 
-  if (screen === "organisations" && id === "new") return <NewOrg />;
+  if (screen === "organisations" && id === "new") {
+    return (
+      <Page kicker={td("platform")} title={t("createOrganisation")}>
+        <CreateOrgWizard base={base} />
+      </Page>
+    );
+  }
 
   if (screen === "organisations") {
     const org = state.orgs.find((item) => item.id === id);
     if (!org) return <Missing base={base} />;
-    return <OrgDetail orgId={org.id} />;
+    return (
+      <OrgDetailPanel
+        orgId={org.id}
+        base={`${base}/organisations`}
+        integrationsBase={base}
+        usersBase={base}
+        officesBase={base}
+        platformAdmin={role === "super-admin"}
+      />
+    );
+  }
+
+  if (screen === "branches" && id === "new") {
+    const org =
+      state.orgs.find((item) => item.id === "northbridge") ?? state.orgs[0];
+    return (
+      <Page kicker={t("offices")} title={t("addOfficePage")}>
+        <CreateOfficePanel
+          orgId={org?.id ?? "northbridge"}
+          base={`${base}/branches`}
+        />
+      </Page>
+    );
+  }
+
+  if (screen === "branches" && id) {
+    const found = state.orgs
+      .map((org) => ({
+        org,
+        office: org.offices.find((office) => office.id === id),
+      }))
+      .find((row) => row.office);
+    if (!found?.office) return <Missing base={base} />;
+    return (
+      <OfficeDetailPanel
+        orgId={found.org.id}
+        officeId={found.office.id}
+        base={`${base}/branches`}
+      />
+    );
+  }
+
+  if (screen === "users") {
+    return (
+      <UserDetailFromQuery
+        id={id}
+        base={`${base}/users`}
+        orgAdmin={role === "org-admin"}
+      />
+    );
+  }
+
+  if (screen === "integrations") {
+    return <IntegrationDetailPanel id={id} base={base} />;
   }
 
   if (screen === "requests") return <RequestDetail id={id} />;
@@ -1021,21 +1768,48 @@ function Detail({
   if (screen === "properties") {
     const item = state.properties.find((row) => row.id === id);
     if (!item) return <Missing base={base} />;
-    return <PropertyDetail id={item.id} landlord={role === "landlord"} />;
+    return (
+      <PropertyDetailPanel
+        id={item.id}
+        landlord={role === "landlord"}
+        base={base}
+      />
+    );
   }
 
-  if (screen === "listings") return <ListingDetail id={id} />;
+  if (screen === "listings" && id === "new") {
+    return (
+      <Page kicker={tl("lettings")} title={t("createListing")}>
+        <CreateListingWizard base={`${base}/listings`} />
+      </Page>
+    );
+  }
+  if (screen === "listings")
+    return <ListingDetailPanel id={id} base={`${base}/listings`} />;
   if (screen === "applicants") return <ApplicantDetail id={id} />;
   if (screen === "viewings") return <ViewingDetail id={id} />;
   if (screen === "certificates") return <CertDetail id={id} />;
   if (screen === "payments") return <PaymentDetail id={id} />;
   if (screen === "arrears") return <ArrearsDetail id={id} />;
   if (screen === "statements") return <StatementDetail id={id} />;
-  if (screen === "projects") return <MigrationDetail id={id} />;
+  if (screen === "requirements")
+    return <RequirementDetailPanel id={id} base={`${base}/requirements`} />;
+  if (screen === "schedules")
+    return <RentSchedulePanel id={id} base={`${base}/schedules`} />;
+  if (screen === "projects" && id === "new") {
+    return (
+      <Page kicker={td("migration")} title={t("newMigrationProject")}>
+        <CreateMigrationProject base={`${base}/projects`} />
+      </Page>
+    );
+  }
+  if (screen === "projects")
+    return <MigrationDetailPanel id={id} base={base} />;
   if (screen === "jobs")
     return (
-      <JobDetail
+      <JobDetailPanel
         id={id}
+        base={base}
         landlord={role === "landlord"}
         contractor={role === "contractor"}
       />
@@ -1045,361 +1819,447 @@ function Detail({
 }
 
 function Missing({ base }: { base: string }) {
+  const t = useTranslations("detail");
+  const tc = useTranslations("common");
+  const tf = useTranslations("forms");
   return (
-    <Page kicker="Not found" title="That record is not here">
+    <Page kicker={tc("notFound")} title={t("recordMissing")}>
       <Link className="refresh" href={base}>
-        Back
+        {tf("back")}
       </Link>
-    </Page>
-  );
-}
-
-function NewOrg() {
-  const { state, api } = useDesk();
-  const [name, setName] = useState("");
-  const [branch, setBranch] = useState("");
-  const [admin, setAdmin] = useState("");
-  const [errors, setErrors] = useState<{
-    name?: string;
-    branch?: string;
-    admin?: string;
-  }>({});
-  return (
-    <Page kicker="Platform" title="Create organisation">
-      <p className="hint">
-        The first office is created with the organisation. The organisation
-        admin adds further offices later.
-      </p>
-      <form
-        className="form"
-        noValidate
-        onSubmit={(event) => {
-          event.preventDefault();
-          const company = name.trim();
-          const office = branch.trim();
-          const mail = admin.trim();
-          const next: { name?: string; branch?: string; admin?: string } = {};
-          if (!company) next.name = "Enter the company name.";
-          else if (
-            state.orgs.some(
-              (org) => org.name.trim().toLowerCase() === company.toLowerCase(),
-            )
-          ) {
-            next.name = "An organisation with this name already exists.";
-          }
-          if (!office) next.branch = "Enter the first office.";
-          if (!isEmail(mail)) next.admin = "Enter a valid email address.";
-          setErrors(next);
-          if (next.name || next.branch || next.admin) return;
-          api.createOrg({ name: company, branch: office, admin: mail });
-          setName("");
-          setBranch("");
-          setAdmin("");
-        }}
-      >
-        <label>
-          Company
-          <input
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            aria-invalid={errors.name ? true : undefined}
-            required
-          />
-        </label>
-        {errors.name ? <p className="field-error">{errors.name}</p> : null}
-        <label>
-          First office
-          <input
-            value={branch}
-            onChange={(event) => setBranch(event.target.value)}
-            aria-invalid={errors.branch ? true : undefined}
-            required
-          />
-        </label>
-        {errors.branch ? <p className="field-error">{errors.branch}</p> : null}
-        <label>
-          Admin email
-          <input
-            type="email"
-            value={admin}
-            autoComplete="email"
-            onChange={(event) => setAdmin(event.target.value)}
-            aria-invalid={errors.admin ? true : undefined}
-            required
-          />
-        </label>
-        {errors.admin ? <p className="field-error">{errors.admin}</p> : null}
-        <button type="submit" className="refresh">
-          Create
-        </button>
-      </form>
     </Page>
   );
 }
 
 function RequestDetail({ id }: { id: string }) {
   const { state, api } = useDesk();
+  const t = useTranslations("detail");
+  const tf = useTranslations("forms");
+  const tl = useTranslations("list");
   const item = state.requests.find((row) => row.id === id);
   if (!item) return null;
   return (
-    <Page kicker="Request" title={item.company}>
-      <Fields
+    <Page kicker={t("request")} title={item.company}>
+      <FieldList
         rows={[
-          { label: "Status", value: item.status },
-          { label: "Contact", value: item.contact },
-          { label: "Email", value: item.email },
-          { label: "First office", value: item.branch },
+          { label: tf("status"), value: item.status },
+          { label: tl("contact2"), value: item.contact },
+          { label: tf("email"), value: item.email },
+          { label: t("firstOffice"), value: item.branch },
         ]}
       />
       {item.status === "Requested" ? (
         <div className="flow-actions">
-          <button
+          <AsyncButton
             type="button"
-            className="refresh"
+            loadingText={t("approving")}
             onClick={() => api.decideRequest(item.id, "Approved")}
           >
-            Approve and create
-          </button>
-          <button
+            {t("approveAndCreate")}
+          </AsyncButton>
+          <AsyncButton
             type="button"
-            className="refresh"
+            variant="danger"
+            loadingText={t("declining")}
             onClick={() => api.decideRequest(item.id, "Declined")}
           >
-            Decline
-          </button>
+            {t("decline")}
+          </AsyncButton>
         </div>
       ) : (
-        <p className="hint">This request is already {item.status}.</p>
+        <p className="hint">{t("requestAlready", { status: item.status })}</p>
       )}
     </Page>
   );
 }
 
-function OrgDetail({ orgId }: { orgId: string }) {
-  const { state, api } = useDesk();
-  const org = state.orgs.find((item) => item.id === orgId);
-  const [reason, setReason] = useState("");
-  if (!org) return null;
+function UserDetailFromQuery({
+  id,
+  base,
+  orgAdmin,
+}: {
+  id: string;
+  base: string;
+  orgAdmin: boolean;
+}) {
+  const { state } = useDesk();
+  const searchParams = useSearchParams();
+  const fromQuery = searchParams.get("org") ?? undefined;
+  const contextOrgId = orgAdmin ? managedOrgId(state) : fromQuery;
   return (
-    <Page kicker="Organisation" title={org.name}>
-      <Fields
-        rows={[
-          { label: "Status", value: org.status },
-          { label: "Offices", value: String(org.branches.length) },
-          { label: "Reason", value: org.reason || "None" },
-        ]}
-      />
-      <h2 className="section-label">Offices</h2>
-      <p className="hint">
-        {org.branches.length} {org.branches.length === 1 ? "office" : "offices"}
-        : {org.branches.join(", ")}. The first office is named when this
-        organisation is created. The organisation admin adds further offices.
-      </p>
-      <form
-        className="form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!reason.trim()) return;
-          api.setOrgStatus(org.id, "Suspended", reason.trim());
-        }}
-      >
-        <label>
-          Reason to suspend
-          <input
-            value={reason}
-            onChange={(event) => setReason(event.target.value)}
-          />
-        </label>
-        <button type="submit" className="refresh" disabled={!reason.trim()}>
-          Suspend access
-        </button>
-      </form>
-    </Page>
+    <UserDetailPanel
+      id={id}
+      base={base}
+      orgAdmin={orgAdmin}
+      {...(contextOrgId ? { contextOrgId } : {})}
+    />
   );
 }
 
-function Users({ orgWide }: { base: string; orgWide: boolean }) {
+function Users({ base, orgWide }: { base: string; orgWide: boolean }) {
   const { state, api } = useDesk();
+  const searchParams = useSearchParams();
+  const { pending, run } = usePendingAction();
+  const td = useTranslations("detail");
+  const tf = useTranslations("forms");
+  const tc = useTranslations("col");
+  const tl = useTranslations("list");
+  const staffRoleLabel = (value: string) => {
+    const keys: Record<string, string> = {
+      "Organisation Admin": tf("staffRole.orgAdmin"),
+      Operations: tf("staffRole.operations"),
+      Lettings: tf("staffRole.lettings"),
+      Compliance: tf("staffRole.compliance"),
+      Finance: tf("staffRole.finance"),
+    };
+    return keys[value] ?? value;
+  };
+  const scopedOrgId = searchParams.get("org");
+  const defaultOrgId = managedOrgId(state);
+  const org =
+    (scopedOrgId
+      ? state.orgs.find((item) => item.id === scopedOrgId)
+      : undefined) ??
+    state.orgs.find((item) => item.id === defaultOrgId) ??
+    state.orgs[0];
+  const orgId = org?.id ?? defaultOrgId;
+  const roster =
+    orgWide && !scopedOrgId
+      ? state.users
+      : state.users.filter((user) => user.orgId === orgId);
+  const userLink = (userId: string) =>
+    scopedOrgId || !orgWide
+      ? `${base}/users/${userId}?org=${encodeURIComponent(orgId)}`
+      : `${base}/users/${userId}`;
+  const branchOptions =
+    org?.offices.map((office) => office.name) ?? [
+      "Peckham",
+      "Deptford",
+      "Greenwich",
+    ];
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("Lettings");
-  const [scope, setScope] = useState("Peckham");
+  const [scope, setScope] = useState(branchOptions[0] ?? "Peckham");
   const [errors, setErrors] = useState<{ name?: string; email?: string }>({});
+  const canInvite =
+    name.trim().length > 0 && isEmail(email.trim()) && !pending;
   const roles = orgWide
     ? ["Organisation Admin", "Operations", "Lettings", "Compliance", "Finance"]
-    : ["Operations", "Lettings", "Compliance", "Finance"];
+    : [
+        "Organisation Admin",
+        "Operations",
+        "Lettings",
+        "Compliance",
+        "Finance",
+      ];
   return (
-    <Page kicker="Access" title="Users">
-      <Table
-        columns={["Name", "Email", "Role", "Scope", "Status"]}
-        rows={state.users.map((item) => ({
-          key: item.id,
-          cells: [
-            item.name,
-            item.email || "—",
-            item.role,
-            item.scope,
-            item.status,
-          ],
-        }))}
-      />
-      <form
-        className="form"
-        noValidate
-        onSubmit={(event) => {
-          event.preventDefault();
-          const person = name.trim();
-          const mail = email.trim();
-          const next: { name?: string; email?: string } = {};
-          if (!person) next.name = "Enter the person's name.";
-          if (!isEmail(mail)) next.email = "Enter a valid email address.";
-          else if (
-            state.users.some(
-              (user) => user.email?.toLowerCase() === mail.toLowerCase(),
-            )
-          ) {
-            next.email = "This email already has an active or invited account.";
+    <Page
+      kicker={
+        orgWide && scopedOrgId
+          ? org?.name ?? td("organisation")
+          : td("access")
+      }
+      title={
+        orgWide && scopedOrgId
+          ? td("teamInOrg")
+          : orgWide
+            ? td("usersPlatform")
+            : td("users")
+      }
+    >
+      {orgWide && scopedOrgId && org ? (
+        <p className="hint">
+          {td("showingMembers", { org: org.name })}{" "}
+          <Link className="refresh" href={`${base}/users`}>
+            {td("viewAllPlatformUsers")}
+          </Link>
+          {" · "}
+          <Link
+            className="refresh"
+            href={`${base.replace(/\/users$/, "")}/organisations/${org.id}?tab=users`}
+          >
+            {td("organisationHub")}
+          </Link>
+        </p>
+      ) : null}
+      <DeskStack>
+        <DeskToolbar
+          title={td("inviteUser")}
+          description={
+            scopedOrgId || !orgWide
+              ? td("inviteScoped", {
+                  org: org?.name ?? td("organisation"),
+                })
+              : td("invitePlatform")
           }
-          setErrors(next);
-          if (next.name || next.email) return;
-          api.inviteUser({ name: person, email: mail, role, scope });
-          setName("");
-          setEmail("");
-        }}
-      >
-        <label>
-          Name
-          <input
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            aria-invalid={errors.name ? true : undefined}
-            required
-          />
-        </label>
-        {errors.name ? <p className="field-error">{errors.name}</p> : null}
-        <label>
-          Email
-          <input
-            type="email"
-            value={email}
-            autoComplete="email"
-            onChange={(event) => setEmail(event.target.value)}
-            aria-invalid={errors.email ? true : undefined}
-            required
-          />
-        </label>
-        {errors.email ? <p className="field-error">{errors.email}</p> : null}
-        <label>
-          Role
-          <select
-            value={role}
-            onChange={(event) => setRole(event.target.value)}
+        >
+          <form
+            className="form form--inline"
+            noValidate
+            onSubmit={(event) => {
+              event.preventDefault();
+              void run(async () => {
+                const person = name.trim();
+                const mail = email.trim();
+                const next: { name?: string; email?: string } = {};
+                if (!person) next.name = tf("errors.enterPersonName");
+                if (!isEmail(mail)) next.email = tf("errors.validEmail");
+                else if (
+                  state.users.some(
+                    (user) => user.email?.toLowerCase() === mail.toLowerCase(),
+                  )
+                ) {
+                  next.email = tf("errors.emailTaken");
+                }
+                setErrors(next);
+                if (next.name || next.email) return;
+                api.inviteUser({
+                  name: person,
+                  email: mail,
+                  role,
+                  scope,
+                  orgId,
+                });
+                setName("");
+                setEmail("");
+              });
+            }}
           >
-            {roles.map((item) => (
-              <option key={item}>{item}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Branch scope
-          <select
-            value={scope}
-            onChange={(event) => setScope(event.target.value)}
-          >
-            {["Peckham", "Deptford", "Greenwich"].map((item) => (
-              <option key={item}>{item}</option>
-            ))}
-          </select>
-        </label>
-        <button type="submit" className="refresh">
-          Send invite
-        </button>
-      </form>
+            <label>
+              {tf("name")}
+              <input
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                aria-invalid={errors.name ? true : undefined}
+                required
+              />
+            </label>
+            {errors.name ? <FieldError>{errors.name}</FieldError> : null}
+            <label>
+              {tf("email")}
+              <input
+                type="email"
+                value={email}
+                autoComplete="email"
+                onChange={(event) => setEmail(event.target.value)}
+                aria-invalid={errors.email ? true : undefined}
+                required
+              />
+            </label>
+            {errors.email ? <FieldError>{errors.email}</FieldError> : null}
+            <label>
+              {tf("role")}
+              <select
+                value={role}
+                onChange={(event) => setRole(event.target.value)}
+              >
+                {roles.map((item) => (
+                  <option key={item}>{staffRoleLabel(item)}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              {tf("branchScope")}
+              <select
+                value={scope}
+                onChange={(event) => setScope(event.target.value)}
+              >
+                <option>{tf("allBranches")}</option>
+                {branchOptions.map((item) => (
+                  <option key={item}>{item}</option>
+                ))}
+              </select>
+            </label>
+            <Button
+              type="submit"
+              loading={pending}
+              disabled={!canInvite}
+              loadingText={tf("loading.sending")}
+            >
+              {tf("sendInvite")}
+            </Button>
+          </form>
+        </DeskToolbar>
+        <DataTable
+          caption={td("activeInvitedUsers")}
+          searchable
+          searchPlaceholder={td("usersSearch")}
+          filters={[
+            {
+              id: "role",
+              label: tf("role"),
+              options: [
+                { value: "", label: tf("allRoles") },
+                ...[
+                  "Organisation Admin",
+                  "Operations",
+                  "Lettings",
+                  "Compliance",
+                  "Finance",
+                ].map((label) => ({
+                  value: label,
+                  label: staffRoleLabel(label),
+                })),
+              ],
+            },
+            {
+              id: "status",
+              label: tf("status"),
+              options: [
+                { value: "", label: tf("allStatuses") },
+                { value: "Active", label: tf("userStatus.active") },
+                { value: "Invited", label: tf("userStatus.invited") },
+                { value: "Deactivated", label: tf("userStatus.suspended") },
+              ],
+            },
+            {
+              id: "scope",
+              label: tf("scope"),
+              options: [
+                { value: "", label: tf("allScopes") },
+                ...branchOptions.map((label) => ({
+                  value: label,
+                  label,
+                })),
+                { value: "All branches", label: tf("allBranches") },
+              ],
+            },
+          ]}
+          columns={[
+            tc("name"),
+            tf("email"),
+            tf("role"),
+            tf("scope"),
+            tc("status"),
+            "",
+          ]}
+          rows={roster.map((item) => ({
+            key: item.id,
+            searchText: `${item.name} ${item.email ?? ""} ${item.role} ${item.scope} ${item.status}`,
+            filterValues: {
+              role: item.role,
+              status: item.status,
+              scope: item.scope,
+            },
+            cells: [
+              <Link key="n" className="rowlink" href={userLink(item.id)}>
+                {item.name}
+              </Link>,
+              item.email || "—",
+              staffRoleLabel(item.role),
+              item.scope,
+              item.status,
+              <Link key="m" className="refresh" href={userLink(item.id)}>
+                {tl("manage")}
+              </Link>,
+            ],
+          }))}
+        />
+      </DeskStack>
     </Page>
   );
 }
 
-function Branches() {
-  const { state, api } = useDesk();
+function Branches({ base }: { base: string }) {
+  const { state } = useDesk();
+  const td = useTranslations("detail");
+  const tf = useTranslations("forms");
+  const tc = useTranslations("col");
+  const tl = useTranslations("list");
   const org =
     state.orgs.find((item) => item.id === "northbridge") ?? state.orgs[0];
-  const [name, setName] = useState("");
-  const [error, setError] = useState("");
   if (!org) return null;
   return (
-    <Page kicker={org.name} title="Offices">
-      <p className="hint">
-        {org.branches.length} {org.branches.length === 1 ? "office" : "offices"}{" "}
-        on {org.name}. You add offices here. The first office was named when the
-        organisation was created.
-      </p>
-      <Fields
-        rows={org.branches.map((branch) => ({
-          label: branch,
-          value: "In use",
-        }))}
-      />
-      <form
-        className="form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const office = name.trim();
-          if (!office) {
-            setError("Enter an office name.");
-            return;
-          }
-          if (
-            org.branches.some(
-              (branch) => branch.toLowerCase() === office.toLowerCase(),
-            )
-          ) {
-            setError("That office already exists.");
-            return;
-          }
-          setError("");
-          api.addBranch(org.id, office);
-          setName("");
-        }}
-      >
-        <label>
-          New office
-          <input
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            aria-invalid={error ? true : undefined}
-          />
-        </label>
-        {error ? <p className="field-error">{error}</p> : null}
-        <button type="submit" className="refresh">
-          Add office
-        </button>
-      </form>
+    <Page kicker={org.name} title={td("offices")}>
+      <DeskStack>
+        <DeskToolbar
+          title={td("offices")}
+          description={td("officesDesc")}
+        >
+          <Button variant="primary" asChild>
+            <Link href={`${base}/branches/new`}>{td("addOffice")}</Link>
+          </Button>
+        </DeskToolbar>
+        <DataTable
+          caption={td("allOffices")}
+          searchPlaceholder={td("officesSearch")}
+          filters={[
+            {
+              id: "status",
+              label: tf("status"),
+              options: [
+                { value: "", label: tf("allStatuses") },
+                { value: "Active", label: tf("officeStatus.active") },
+                { value: "Closed", label: tf("officeStatus.closed") },
+              ],
+            },
+          ]}
+          columns={[tc("office"), tc("address"), tc("person"), tc("status"), ""]}
+          rows={org.offices.map((office) => ({
+            key: office.id,
+            searchText: `${office.name} ${office.line1} ${office.town} ${office.postcode} ${office.manager}`,
+            filterValues: { status: office.status },
+            cells: [
+              <Link
+                key="n"
+                className="rowlink"
+                href={`${base}/branches/${office.id}`}
+              >
+                {office.name}
+              </Link>,
+              [office.line1, office.postcode].filter(Boolean).join(", ") || "—",
+              office.manager || "—",
+              office.status,
+              <Link
+                key="m"
+                className="refresh"
+                href={`${base}/branches/${office.id}`}
+              >
+                {tl("manage")}
+              </Link>,
+            ],
+          }))}
+        />
+      </DeskStack>
     </Page>
   );
 }
 
 function Settings() {
   const { state, api } = useDesk();
+  const { pending, run } = usePendingAction();
+  const td = useTranslations("detail");
+  const tf = useTranslations("forms");
+  const tCommon = useTranslations("common");
   const [days, setDays] = useState(state.reminderDays);
+  const canSave = days.trim().length > 0 && !pending;
   return (
-    <Page kicker="Organisation" title="Settings">
+    <Page kicker={td("organisation")} title={td("settings")}>
       <form
         className="form"
         onSubmit={(event) => {
           event.preventDefault();
-          api.saveSettings(days);
+          void run(async () => {
+            api.saveSettings(days);
+          });
         }}
       >
         <label>
-          Certificate reminder, days before expiry
+          {td("certReminderDays")}
           <input
             value={days}
             onChange={(event) => setDays(event.target.value)}
           />
         </label>
-        <button type="submit" className="refresh">
-          Save
-        </button>
+        <Button
+          type="submit"
+          loading={pending}
+          disabled={!canSave}
+          loadingText={tf("loading.saving")}
+        >
+          {tCommon("save")}
+        </Button>
       </form>
     </Page>
   );
@@ -1407,204 +2267,124 @@ function Settings() {
 
 function WorkDetail({ id }: { id: string }) {
   const { state, api } = useDesk();
+  const { pending, run } = usePendingAction();
+  const td = useTranslations("detail");
+  const tf = useTranslations("forms");
+  const tc = useTranslations("col");
   const item = state.work.find((row) => row.id === id);
   const [owner, setOwner] = useState(item?.owner ?? "Unassigned");
   if (!item) return null;
   return (
     <Page kicker={item.kind} title={item.title}>
-      <Fields
+      <FieldList
         rows={[
-          { label: "Where", value: item.place },
-          { label: "Owner", value: item.owner },
-          { label: "State", value: item.state },
-          { label: "Detail", value: item.detail },
+          { label: tc("where"), value: item.place },
+          { label: tc("owner"), value: item.owner },
+          { label: tc("state"), value: item.state },
+          { label: td("work.detail"), value: item.detail },
         ]}
       />
       <form
         className="form"
         onSubmit={(event) => {
           event.preventDefault();
-          api.assignWork(item.id, owner);
+          void run(async () => {
+            api.assignWork(item.id, owner);
+          });
         }}
       >
         <label>
-          Assign
+          {tf("assign")}
           <select
             value={owner}
             onChange={(event) => setOwner(event.target.value)}
           >
             {["Unassigned", "A. Okonkwo", "L. Shah"].map((person) => (
-              <option key={person}>{person}</option>
+              <option key={person}>
+                {person === "Unassigned" ? td("work.unassigned") : person}
+              </option>
             ))}
           </select>
         </label>
         <div className="flow-actions">
-          <button type="submit" className="refresh">
-            Assign
-          </button>
-          <button
+          <Button
+            type="submit"
+            loading={pending}
+            loadingText={tf("loading.assigning")}
+          >
+            {td("work.assign")}
+          </Button>
+          <AsyncButton
             type="button"
-            className="refresh"
+            loadingText={tf("loading.resolving")}
             onClick={() => api.resolveWork(item.id)}
           >
-            Resolve
-          </button>
+            {td("work.resolve")}
+          </AsyncButton>
         </div>
       </form>
     </Page>
   );
 }
 
-function PropertyDetail({ id, landlord }: { id: string; landlord: boolean }) {
-  const { state, api } = useDesk();
-  const item = state.properties.find((row) => row.id === id);
-  const [status, setStatus] = useState(item?.status ?? "Occupied");
-  const [reason, setReason] = useState("");
-  if (!item) return null;
-  return (
-    <Page kicker={item.branch} title={item.address}>
-      <Fields
-        rows={[
-          { label: "Status", value: item.status },
-          { label: "Tenancy", value: item.tenancy },
-        ]}
-      />
-      {landlord ? null : (
-        <>
-          <form
-            className="form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (!reason.trim()) return;
-              api.setPropertyStatus(item.id, status, reason.trim());
-            }}
-          >
-            <label>
-              New status
-              <select
-                value={status}
-                onChange={(event) => setStatus(event.target.value)}
-              >
-                {[
-                  "Onboarding",
-                  "Available",
-                  "Reserved",
-                  "Occupied",
-                  "Void",
-                  "On hold",
-                  "Archived",
-                ].map((value) => (
-                  <option key={value}>{value}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Reason
-              <input
-                value={reason}
-                onChange={(event) => setReason(event.target.value)}
-              />
-            </label>
-            <button type="submit" className="refresh" disabled={!reason.trim()}>
-              Update status
-            </button>
-          </form>
-          <h2 className="section-label">Move-out checks</h2>
-          <div className="flow-actions">
-            {Object.entries(item.checks).map(([name, done]) => (
-              <button
-                key={name}
-                type="button"
-                className="refresh"
-                onClick={() => api.toggleCheck(item.id, name)}
-              >
-                {name}: {done ? "Done" : "Open"}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-    </Page>
-  );
-}
-
-function ListingDetail({ id }: { id: string }) {
-  const { state, api } = useDesk();
-  const item = state.listings.find((row) => row.id === id);
-  if (!item) return null;
-  return (
-    <Page kicker="Listing" title={item.address}>
-      <Fields
-        rows={[
-          { label: "Portal", value: item.portal },
-          { label: "Status", value: item.status },
-        ]}
-      />
-      <button
-        type="button"
-        className="refresh"
-        onClick={() => api.publishListing(item.id)}
-      >
-        Publish
-      </button>
-    </Page>
-  );
-}
-
 function ApplicantDetail({ id }: { id: string }) {
   const { state, api } = useDesk();
+  const td = useTranslations("detail");
+  const tf = useTranslations("forms");
+  const tc = useTranslations("col");
   const item = state.applicants.find((row) => row.id === id);
   if (!item) return null;
   return (
-    <Page kicker="Applicant" title={item.name}>
-      <Fields
+    <Page kicker={td("applicant.kicker")} title={item.name}>
+      <FieldList
         rows={[
-          { label: "Property", value: item.property },
-          { label: "Stage", value: item.stage },
+          { label: tc("property"), value: item.property },
+          { label: tc("stage"), value: item.stage },
           {
-            label: "Suggestion",
-            value: "Shown as a hint. You make the decision.",
+            label: td("applicant.suggestionLabel"),
+            value: td("applicant.suggestion"),
           },
         ]}
       />
-      <button
+      <AsyncButton
         type="button"
-        className="refresh"
+        loadingText={tf("loading.saving")}
         onClick={() => api.acceptApplicant(item.id)}
       >
-        Select applicant
-      </button>
+        {td("applicant.select")}
+      </AsyncButton>
     </Page>
   );
 }
 
 function ViewingDetail({ id }: { id: string }) {
   const { state, api } = useDesk();
+  const td = useTranslations("detail");
+  const tc = useTranslations("col");
   const item = state.viewings.find((row) => row.id === id);
   if (!item) return null;
   return (
     <Page kicker={item.when} title={item.property}>
-      <Fields
+      <FieldList
         rows={[
-          { label: "Applicant", value: item.applicant },
-          { label: "Outcome", value: item.outcome },
+          { label: tc("person"), value: item.applicant },
+          { label: tc("outcome"), value: item.outcome },
         ]}
       />
       <div className="flow-actions">
-        <button
+        <AsyncButton
           type="button"
-          className="refresh"
           onClick={() => api.setViewingOutcome(item.id, "Interested")}
         >
-          Interested
-        </button>
-        <button
+          {td("viewing.interested")}
+        </AsyncButton>
+        <AsyncButton
           type="button"
-          className="refresh"
+          variant="ghost"
           onClick={() => api.setViewingOutcome(item.id, "Not proceeding")}
         >
-          Not proceeding
-        </button>
+          {td("viewing.notProceeding")}
+        </AsyncButton>
       </div>
     </Page>
   );
@@ -1612,44 +2392,59 @@ function ViewingDetail({ id }: { id: string }) {
 
 function CertDetail({ id }: { id: string }) {
   const { state, api } = useDesk();
+  const { pending, run } = usePendingAction();
+  const td = useTranslations("detail");
+  const tf = useTranslations("forms");
+  const tc = useTranslations("col");
   const item = state.certificates.find((row) => row.id === id);
   const [expiry, setExpiry] = useState("18 Sep 2027");
+  const canRenew = expiry.trim().length > 0 && !pending;
   if (!item) return null;
   return (
     <Page kicker={item.type} title={item.property}>
-      <Fields
+      <FieldList
         rows={[
-          { label: "Status", value: item.status },
-          { label: "Expiry", value: item.expiry },
-          { label: "History", value: item.history.join(" · ") || "None yet" },
+          { label: tc("status"), value: item.status },
+          { label: tc("expiry"), value: item.expiry },
+          {
+            label: td("cert.history"),
+            value: item.history.join(" · ") || td("cert.noneYet"),
+          },
         ]}
       />
       <div className="flow-actions">
-        <button
+        <AsyncButton
           type="button"
-          className="refresh"
+          loadingText={tf("loading.checking")}
           onClick={() => api.validateCert(item.id)}
         >
-          Mark evidence checked
-        </button>
+          {td("cert.markChecked")}
+        </AsyncButton>
       </div>
       <form
         className="form"
         onSubmit={(event) => {
           event.preventDefault();
-          api.renewCert(item.id, expiry);
+          void run(async () => {
+            api.renewCert(item.id, expiry);
+          });
         }}
       >
         <label>
-          New expiry
+          {tf("newExpiry")}
           <input
             value={expiry}
             onChange={(event) => setExpiry(event.target.value)}
           />
         </label>
-        <button type="submit" className="refresh">
-          Save renewal
-        </button>
+        <Button
+          type="submit"
+          loading={pending}
+          disabled={!canRenew}
+          loadingText={tf("loading.saving")}
+        >
+          {td("cert.saveRenewal")}
+        </Button>
       </form>
     </Page>
   );
@@ -1657,58 +2452,76 @@ function CertDetail({ id }: { id: string }) {
 
 function PaymentDetail({ id }: { id: string }) {
   const { state, api } = useDesk();
+  const td = useTranslations("detail");
+  const tf = useTranslations("forms");
+  const tc = useTranslations("col");
   const item = state.payments.find((row) => row.id === id);
   if (!item) return null;
   return (
     <Page kicker={item.reference} title={item.amount}>
-      <Fields
+      <FieldList
         rows={[
-          { label: "Tenancy", value: item.tenancy },
-          { label: "Status", value: item.status },
+          { label: tc("tenancy"), value: item.tenancy },
+          { label: tc("status"), value: item.status },
         ]}
       />
-      <button
+      <AsyncButton
         type="button"
-        className="refresh"
-        onClick={() => api.matchPayment(item.id)}
+        loadingText={tf("loading.matching")}
         disabled={item.status === "Matched"}
+        onClick={() => api.matchPayment(item.id)}
       >
-        Match to tenancy
-      </button>
+        {td("payment.matchTenancy")}
+      </AsyncButton>
     </Page>
   );
 }
 
 function ArrearsDetail({ id }: { id: string }) {
   const { state, api } = useDesk();
+  const { pending, run } = usePendingAction();
+  const td = useTranslations("detail");
+  const tf = useTranslations("forms");
+  const tc = useTranslations("col");
   const item = state.arrears.find((row) => row.id === id);
   const [plan, setPlan] = useState(item?.plan ?? "");
+  const canSave = plan.trim().length > 0 && !pending;
   if (!item) return null;
   return (
     <Page kicker={item.age} title={item.place}>
-      <Fields
+      <FieldList
         rows={[
-          { label: "Short", value: item.amount },
-          { label: "Plan", value: item.plan || "None" },
+          { label: tc("short"), value: item.amount },
+          {
+            label: td("arrears.plan"),
+            value: item.plan || td("arrears.none"),
+          },
         ]}
       />
       <form
         className="form"
         onSubmit={(event) => {
           event.preventDefault();
-          api.savePlan(item.id, plan);
+          void run(async () => {
+            api.savePlan(item.id, plan);
+          });
         }}
       >
         <label>
-          Payment plan
+          {tf("paymentPlan")}
           <input
             value={plan}
             onChange={(event) => setPlan(event.target.value)}
           />
         </label>
-        <button type="submit" className="refresh">
-          Save plan
-        </button>
+        <Button
+          type="submit"
+          loading={pending}
+          disabled={!canSave}
+          loadingText={tf("loading.saving")}
+        >
+          {td("arrears.savePlan")}
+        </Button>
       </form>
     </Page>
   );
@@ -1716,183 +2529,139 @@ function ArrearsDetail({ id }: { id: string }) {
 
 function StatementDetail({ id }: { id: string }) {
   const { state, api } = useDesk();
+  const td = useTranslations("detail");
+  const tf = useTranslations("forms");
+  const tc = useTranslations("col");
   const item = state.statements.find((row) => row.id === id);
   if (!item) return null;
   return (
     <Page kicker={item.period} title={item.landlord}>
-      <Fields
+      <FieldList
         rows={[
-          { label: "Status", value: item.status },
-          { label: "Landlord sees", value: "Approved lines only" },
+          { label: tc("status"), value: item.status },
+          {
+            label: td("statement.landlordSees"),
+            value: td("statement.approvedOnly"),
+          },
         ]}
       />
-      <button
+      <AsyncButton
         type="button"
-        className="refresh"
+        loadingText={tf("loading.publishing")}
         onClick={() => api.publishStatement(item.id)}
       >
-        Publish
-      </button>
+        {td("statement.publish")}
+      </AsyncButton>
     </Page>
   );
 }
 
-function MigrationDetail({ id }: { id: string }) {
-  const { state, api } = useDesk();
-  const item = state.migrations.find((row) => row.id === id);
-  if (!item) return null;
-  return (
-    <Page kicker={item.source} title={item.agency}>
-      <Fields
-        rows={[
-          { label: "Stage", value: item.stage },
-          { label: "Note", value: item.note },
-        ]}
-      />
-      <div className="flow-actions">
-        <button
-          type="button"
-          className="refresh"
-          onClick={() => api.setMigrationStage(item.id, "Mapped")}
-        >
-          Save mapping
-        </button>
-        <button
-          type="button"
-          className="refresh"
-          onClick={() => api.setMigrationStage(item.id, "Dry run")}
-        >
-          Run dry import
-        </button>
-        <button
-          type="button"
-          className="refresh"
-          onClick={() => api.setMigrationStage(item.id, "Live")}
-        >
-          Cut over
-        </button>
-      </div>
-    </Page>
-  );
-}
-
-function JobDetail({
-  id,
-  landlord,
-  contractor,
+function DocumentsPage({
+  role,
+  docs,
+  api,
 }: {
-  id: string;
-  landlord: boolean;
-  contractor: boolean;
+  role: string;
+  docs: DeskState["documents"];
+  api: DeskApi;
 }) {
-  const { state, api } = useDesk();
-  const item = state.jobs.find((row) => row.id === id);
-  const [reason, setReason] = useState("");
-  const [notes, setNotes] = useState("");
-  const [amount, setAmount] = useState("£180");
-  if (!item) return null;
+  const td = useTranslations("detail");
+  const tf = useTranslations("forms");
+  const tc = useTranslations("col");
+  const [name, setName] = useState("");
+  const [type, setType] = useState("PDF");
+  const [linkedTo, setLinkedTo] = useState("");
+  const orgId =
+    role === "landlord" ? "harbour" : role === "tenant" ? "northbridge" : "northbridge";
+  const docTypeLabel = (value: string) => {
+    const map: Record<string, string> = {
+      PDF: tf("docType.pdf"),
+      Image: tf("docType.image"),
+      Spreadsheet: tf("docType.spreadsheet"),
+      Other: tf("docType.other"),
+    };
+    return map[value] ?? value;
+  };
+
   return (
-    <Page kicker={item.address} title={item.title}>
-      <Fields
-        rows={[
-          { label: "Status", value: item.status },
-          { label: "Quote", value: item.quote || "None" },
-          { label: "Assignee", value: item.assignee },
-          { label: "Notes", value: item.notes || "None" },
-        ]}
-      />
-      {landlord ? (
-        <div className="flow-actions">
-          <button
-            type="button"
-            className="refresh"
-            onClick={() => api.decideJob(item.id, "Approved")}
+    <Page kicker={td("records")} title={td("documents")}>
+      <DeskStack>
+        <DeskToolbar title={td("uploadTitle")} description={td("uploadDesc")}>
+          <form
+            className="form form--inline"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!name.trim()) return;
+              api.uploadDocument({
+                name,
+                type,
+                linkedTo: linkedTo.trim() || "General",
+                orgId,
+              });
+              setName("");
+              setLinkedTo("");
+            }}
           >
-            Approve
-          </button>
-          <button
-            type="button"
-            className="refresh"
-            onClick={() => api.decideJob(item.id, "Rejected")}
-          >
-            Reject
-          </button>
-        </div>
-      ) : null}
-      {contractor ? (
-        <form
-          className="form"
-          onSubmit={(event) => {
-            event.preventDefault();
-          }}
-        >
-          <div className="flow-actions">
-            <button
-              type="button"
-              className="refresh"
-              onClick={() => api.acceptJob(item.id)}
-            >
-              Accept
-            </button>
-          </div>
-          <label>
-            Reason if you decline
-            <input
-              value={reason}
-              onChange={(event) => setReason(event.target.value)}
-            />
-          </label>
-          <button
-            type="button"
-            className="refresh"
-            disabled={!reason.trim()}
-            onClick={() => api.declineJob(item.id, reason.trim())}
-          >
-            Decline
-          </button>
-          <label>
-            Completion notes
-            <textarea
-              value={notes}
-              onChange={(event) => setNotes(event.target.value)}
-            />
-          </label>
-          <button
-            type="button"
-            className="refresh"
-            onClick={() => api.completeJob(item.id, notes)}
-          >
-            Mark complete
-          </button>
-          <label>
-            Extra quote
-            <input
-              value={amount}
-              onChange={(event) => setAmount(event.target.value)}
-            />
-          </label>
-          <button
-            type="button"
-            className="refresh"
-            onClick={() => api.quoteJob(item.id, amount)}
-          >
-            Send quote
-          </button>
-        </form>
-      ) : null}
+            <label>
+              {tf("fileName")}
+              <input value={name} onChange={(event) => setName(event.target.value)} />
+            </label>
+            <label>
+              {tf("type")}
+              <select value={type} onChange={(event) => setType(event.target.value)}>
+                {["PDF", "Image", "Spreadsheet", "Other"].map((value) => (
+                  <option key={value}>{docTypeLabel(value)}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              {tf("linkedRecord")}
+              <input
+                value={linkedTo}
+                onChange={(event) => setLinkedTo(event.target.value)}
+                placeholder={tf("linkedRecordPlaceholder")}
+              />
+            </label>
+            <Button type="submit" disabled={!name.trim()}>
+              {tf("upload")}
+            </Button>
+          </form>
+        </DeskToolbar>
+        <DataTable
+          caption={td("linkedFiles")}
+          searchPlaceholder={td("documentsSearch")}
+          columns={[tc("name"), tf("type"), td("linkedTo"), td("uploaded")]}
+          rows={docs.map((item) => ({
+            key: item.id,
+            cells: [item.name, item.type, item.linkedTo, item.uploaded],
+          }))}
+        />
+      </DeskStack>
     </Page>
   );
 }
 
 function RepairForm() {
   const { state, api } = useDesk();
+  const td = useTranslations("detail");
+  const tf = useTranslations("forms");
+  const tc = useTranslations("col");
   const [category, setCategory] = useState("Heating");
   const [detail, setDetail] = useState("");
   const mine = state.jobs.filter(
     (item) => item.address.includes("Queen") || item.status === "Submitted",
   );
+  const repairCategoryLabel = (value: string) => {
+    const map: Record<string, string> = {
+      Heating: tf("repairCategory.heating"),
+      Leak: tf("repairCategory.leak"),
+      Electrics: tf("repairCategory.electrics"),
+      Other: tf("repairCategory.other"),
+    };
+    return map[value] ?? value;
+  };
   return (
-    <Page kicker="Repairs" title="Report an issue">
+    <Page kicker={td("repairs")} title={td("reportIssue")}>
       <form
         className="form"
         onSubmit={(event) => {
@@ -1902,18 +2671,18 @@ function RepairForm() {
         }}
       >
         <label>
-          Category
+          {tf("category")}
           <select
             value={category}
             onChange={(event) => setCategory(event.target.value)}
           >
             {["Heating", "Leak", "Electrics", "Other"].map((item) => (
-              <option key={item}>{item}</option>
+              <option key={item}>{repairCategoryLabel(item)}</option>
             ))}
           </select>
         </label>
         <label>
-          What happened
+          {tf("whatHappened")}
           <textarea
             value={detail}
             onChange={(event) => setDetail(event.target.value)}
@@ -1921,12 +2690,12 @@ function RepairForm() {
           />
         </label>
         <button type="submit" className="refresh">
-          Submit
+          {tf("submit")}
         </button>
       </form>
-      <h2 className="section-label">Your issues</h2>
-      <Table
-        columns={["Issue", "Status"]}
+      <h2 className="section-label">{td("yourIssues")}</h2>
+      <DataTable
+        columns={[td("issue"), tc("status")]}
         rows={mine.map((item) => ({
           key: item.id,
           cells: [item.title, item.status],

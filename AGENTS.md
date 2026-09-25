@@ -1,17 +1,16 @@
 # Ezzi
 
-Multi-tenant property-management platform. Modular monolith, hexagonal modules, two Next.js apps, one worker.
+Multi-tenant property-management platform. Modular monolith, hexagonal modules, one Next.js web app, one worker.
 
 ## Layout
 
-- `apps/console` — staff and super-admin
-- `apps/portal` — landlord, tenant, contractor
+- `apps/console` — all web UI: super-admin, org staff, landlord, tenant, contractor (role-scoped; no separate portal app)
 - `apps/worker` — outbox, jobs, schedules
 - `packages/modules/*` — one bounded context per package
 - `packages/platform/*` — ports and adapters
 - `packages/shared-kernel` — Result, ids, money, RequestContext
 
-Rules for agents: `.cursor/rules/` and `docs/module-guide.md`. Do not paste the original architecture prompt into new chats.
+Rules for agents: `.cursor/rules/` and `docs/module-guide.md`. UI copy: `docs/i18n-conventions.md` (never translate org or person names). Do not paste the original architecture prompt into new chats.
 
 ## Not installed yet
 

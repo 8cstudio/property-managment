@@ -2,14 +2,14 @@
 
 import type { ReactNode } from "react";
 import { DeskProvider } from "@/features/workspace/store";
-import { AppBar } from "@/shell/app-bar";
+import { VisitHeader } from "@/features/visit/visit-header";
 
 const visitorDesk = "visit";
 
 export default function VisitLayout({ children }: { children: ReactNode }) {
   return (
     <>
-      <AppBar section="Visitor" />
+      <VisitHeader />
       <DeskProvider role={visitorDesk}>{children}</DeskProvider>
     </>
   );

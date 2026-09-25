@@ -1,6 +1,6 @@
 # Architecture
 
-Ezzi is one deployable monolith with strict package boundaries, plus a separate worker process. Console and portal scale and ship separately. Modules can later move to their own services because they do not share tables or internal imports.
+Ezzi is one deployable monolith with strict package boundaries, plus a separate worker process. All browser UI is **`apps/console`** (staff and external personas by role). Modules can later move to their own services because they do not share tables or internal imports.
 
 ## Rules
 

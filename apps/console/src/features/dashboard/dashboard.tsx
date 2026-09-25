@@ -1,5 +1,6 @@
 "use client";
 
+import { Card, Shimmer } from "@ezzi/ui";
 import { useEffect, useMemo, useState } from "react";
 import { ThemeToggle } from "@/shell/app-bar";
 import {
@@ -22,16 +23,16 @@ const nav = [
 
 function ShimmerRows() {
   return (
-    <div className="panel" aria-hidden="true">
+    <Card aria-hidden="true">
       {["a", "b", "c", "d", "e", "f"].map((row) => (
         <div className="skeleton-row" key={row}>
-          <div className="shimmer" />
-          <div className="shimmer" />
-          <div className="shimmer" />
-          <div className="shimmer" />
+          <Shimmer />
+          <Shimmer />
+          <Shimmer />
+          <Shimmer />
         </div>
       ))}
-    </div>
+    </Card>
   );
 }
 

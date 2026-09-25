@@ -11,7 +11,10 @@
   "dependencies": {
     "@ezzi/env": "workspace:*",
     "@ezzi/ui": "workspace:*",
+    "lucide-react": "catalog:",
+    "motion": "catalog:",
     "next": "catalog:",
+    "next-intl": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:"
   },
