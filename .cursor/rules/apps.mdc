@@ -1,0 +1,10 @@
+---
+description: Thin Next.js delivery apps
+globs: apps/**/*
+alwaysApply: false
+---
+
+`app/` is routing only. UI for a module lives in `src/features/<module>/`.
+Shell nav is built from module manifests. Do not duplicate business rules in components.
+`src/proxy.ts` is the Next.js 16 request interception file. Keep it to auth and tenant pre-checks.
+Console and portal do not import each other. The worker does not import React.

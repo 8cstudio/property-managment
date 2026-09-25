@@ -1,0 +1,21 @@
+{
+  "name": "@ezzi/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@ezzi/shared-kernel": "workspace:*",
+    "drizzle-orm": "catalog:",
+    "postgres": "catalog:"
+  },
+  "devDependencies": {
+    "drizzle-kit": "catalog:",
+    "typescript": "catalog:"
+  },
+  "scripts": {
+    "check": "tsc --noEmit"
+  }
+}

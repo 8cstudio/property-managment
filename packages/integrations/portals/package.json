@@ -1,0 +1,15 @@
+{
+  "name": "@ezzi/adapter-portals",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
+  },
+  "scripts": {
+    "check": "tsc --noEmit"
+  }
+}

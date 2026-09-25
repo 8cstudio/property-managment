@@ -1,0 +1,11 @@
+---
+description: Module package layout
+globs: packages/modules/**/*
+alwaysApply: false
+---
+
+Each module owns `domain/`, `application/`, `infrastructure/`, `permissions.ts`, `events.ts`, `module.ts`, `contracts/`, and `index.ts`.
+`index.ts` is the only server public API and imports `server-only`. `contracts/` is client-safe.
+`permissions.ts` exports keys this module owns. Do not hard-code role names in use-cases.
+Add a module with `pnpm gen:module <name>`, then register its manifest in the app `modules.config.ts`.
+Follow `packages/modules/organisations` once that slice exists. Until then, leave stubs empty.

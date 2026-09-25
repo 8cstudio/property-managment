@@ -1,0 +1,11 @@
+---
+description: Spend as few tokens as possible.
+alwaysApply: true
+---
+
+Do not restate the architecture prompt or these rules.
+Do not install packages, migrate, seed, test, lint, or start dev servers unless the user asks in that message.
+Change only the files the current request names.
+One step per reply. Stop when that step is done.
+Future module prompts start with: follow the organisations reference slice.
+Prefer editing an existing file over adding a new explanation.

@@ -1,0 +1,13 @@
+---
+description: Ezzi boundaries. Always on, kept short on purpose.
+alwaysApply: true
+---
+
+Modular monolith. Dependency direction: domain <- application <- infrastructure <- apps and worker.
+Domain and application never import Next.js, Drizzle, or provider SDKs.
+Modules talk only through `index.ts`, `./contracts`, or domain events. Never through another module's tables or internals.
+Routes, server actions, and proxy only parse input, build RequestContext, call a use-case, and map the result.
+Tenant scope and permission checks are server-side. `can` is deny-by-default.
+AI output is a suggestion, not source of truth. Operational data is archived, not hard-deleted.
+Do not invent business rules for stub modules. New modules copy organisations.
+Read `docs/module-guide.md` before adding a module. Do not restate this file in replies.

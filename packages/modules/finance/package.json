@@ -1,0 +1,20 @@
+{
+  "name": "@ezzi/finance",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./contracts": "./src/contracts/index.ts"
+  },
+  "dependencies": {
+    "@ezzi/shared-kernel": "workspace:*",
+    "server-only": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
+  },
+  "scripts": {
+    "check": "tsc --noEmit"
+  }
+}
