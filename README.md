@@ -33,17 +33,9 @@ pnpm install
 pnpm --filter @ezzi/console dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000](http://localhost:3000). Every role — staff, landlord, tenant, contractor, and visitor — uses this app.
 
-The portal app is a separate placeholder:
-
-```powershell
-pnpm --filter @ezzi/portal dev
-```
-
-That listens on [http://localhost:3001](http://localhost:3001). Use port 3000 for the role screens.
-
-`pnpm dev` starts every app through Turbo. If port 3000 is already in use, stop the other Next.js process before starting a second one.
+`pnpm dev` starts the console and the background worker through Turbo. If port 3000 is already in use, stop the other Next.js process before starting a second one.
 
 ## First page
 
@@ -110,9 +102,8 @@ These buttons change the sample data in the browser.
 
 | Command | What it does |
 | --- | --- |
-| `pnpm --filter @ezzi/console dev` | Console on port 3000 |
-| `pnpm --filter @ezzi/portal dev` | Portal placeholder on port 3001 |
-| `pnpm dev` | All apps |
+| `pnpm --filter @ezzi/console dev` | Web app on port 3000 (all roles) |
+| `pnpm dev` | Console plus background worker |
 | `pnpm check` | Format check and TypeScript |
 | `pnpm lint` | Biome check |
 | `pnpm boundaries` | Dependency-direction check |
@@ -120,9 +111,8 @@ These buttons change the sample data in the browser.
 
 ## Repository
 
-- `apps/console` — the staff and visitor screens on port 3000
-- `apps/portal` — landlord, tenant, and contractor app shell on port 3001
-- `apps/worker` — background jobs
+- `apps/console` — all role and visitor screens on port 3000
+- `apps/worker` — background jobs (no browser URL; runs when the product uses a database)
 - `packages/modules` — one package per business area
 - `packages/platform` — database, auth, storage, queue, and other ports
 - `packages/shared-kernel` — shared result, id, and money types
