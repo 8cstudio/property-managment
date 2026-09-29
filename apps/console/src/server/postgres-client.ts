@@ -13,7 +13,13 @@ export function getPg(): ReturnType<typeof postgres> {
     );
   }
   if (!pool) {
-    pool = postgres(url, { prepare: false, max: 8 });
+    pool = postgres(url, {
+      prepare: false,
+      max: 8,
+      connect_timeout: 15,
+      idle_timeout: 20,
+      connection: { statement_timeout: 20_000 },
+    });
   }
   return pool;
 }

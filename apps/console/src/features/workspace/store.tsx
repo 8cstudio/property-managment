@@ -269,6 +269,8 @@ export function DeskProvider({
 }) {
   const [state, setState] = useState<DeskState | null>(null);
   const [bootStep, setBootStep] = useState<DeskBootStep | null>(1);
+  const [bootError, setBootError] = useState<string | null>(null);
+  const [bootTry, setBootTry] = useState(0);
   const [viewer, setViewer] = useState<Viewer | null>(null);
   const stateRef = useRef<DeskState | null>(null);
   const collectionsLoadedRef = useRef(false);
@@ -303,8 +305,11 @@ export function DeskProvider({
     let active = true;
     collectionsLoadedRef.current = false;
     const seed = createSeed();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 20_000);
     setState(seed);
     setBootStep(1);
+    setBootError(null);
 
     const mergeState = (patch: Partial<DeskState> | ((cur: DeskState) => DeskState)) => {
       setState((cur) => {
@@ -313,59 +318,74 @@ export function DeskProvider({
       });
     };
 
+    const signal = controller.signal;
+    let finished = 0;
+    let failed = false;
+    const mark = (step: DeskBootStep) => {
+      finished += 1;
+      if (!active) return;
+      if (finished < 3) setBootStep(step);
+    };
+
     void (async () => {
-      try {
-        const { orgs, staff } = await deskClient.fetchIdentity();
-        if (!active) return;
-        mergeState({ orgs, users: staff });
-      } catch {
-        /* not signed in yet, or offline */
-      }
-      if (!active) return;
-      setBootStep(2);
+      await Promise.all([
+        deskClient
+          .fetchIdentity(signal)
+          .then(({ orgs, staff }) => {
+            if (active) mergeState({ orgs, users: staff });
+          })
+          .catch(() => {
+            failed = true;
+          })
+          .finally(() => mark(2)),
+        orgRequestsClient
+          .fetchOrgRequestsApi(signal)
+          .then((requests) => {
+            if (active) mergeState({ requests });
+          })
+          .catch((error: unknown) => {
+            const message = error instanceof Error ? error.message : "";
+            if (message.includes("Platform admins")) return;
+            failed = true;
+          })
+          .finally(() => mark(3)),
+        deskClient
+          .fetchDeskCollections(signal)
+          .then((collections) => {
+            if (!active) return;
+            if (collections) {
+              const { requests: _legacyRequests, ...rest } =
+                collections as DeskCollections & {
+                  requests?: DeskState["requests"];
+                };
+              mergeState((cur) =>
+                stripOrphanDeskData({
+                  ...cur,
+                  ...rest,
+                  metricSnapshots: rest.metricSnapshots ?? [],
+                }),
+              );
+            }
+            collectionsLoadedRef.current = true;
+          })
+          .catch(() => {
+            failed = true;
+          })
+          .finally(() => mark(3)),
+      ]);
 
-      try {
-        const requests = await orgRequestsClient.fetchOrgRequestsApi();
-        if (!active) return;
-        mergeState({ requests });
-      } catch {
-        /* super-admin only */
-      }
       if (!active) return;
-      setBootStep(3);
-
-      try {
-        const collections = await deskClient.fetchDeskCollections();
-        if (!active) return;
-        if (collections) {
-          const { requests: _legacyRequests, ...rest } =
-            collections as DeskCollections & {
-              requests?: DeskState["requests"];
-            };
-          mergeState((cur) =>
-            stripOrphanDeskData({
-              ...cur,
-              ...rest,
-              metricSnapshots: rest.metricSnapshots ?? [],
-            }),
-          );
-        } else {
-          await deskClient.saveDeskCollections(pickCollections(seed));
-        }
-        collectionsLoadedRef.current = true;
-      } catch {
-        /* keep seed; do not persist until a successful load */
-      }
-
-      if (!active) return;
-      setBootStep(null);
+      setBootStep(failed ? 3 : null);
+      setBootError(failed ? "failed" : null);
     })();
 
     return () => {
       active = false;
+      clearTimeout(timer);
+      controller.abort();
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, [role]);
+  }, [role, bootTry]);
 
   // Debounced persistence of desk collections after any local mutation.
   useEffect(() => {
@@ -1773,7 +1793,13 @@ export function DeskProvider({
   return (
     <DeskContext.Provider value={{ state: deskState, api, viewer }}>
       {children}
-      {bootStep !== null ? <DeskBootFloating step={bootStep} /> : null}
+      {bootStep !== null ? (
+        <DeskBootFloating
+          step={bootStep}
+          failed={Boolean(bootError)}
+          onRetry={() => setBootTry((n) => n + 1)}
+        />
+      ) : null}
     </DeskContext.Provider>
   );
 }

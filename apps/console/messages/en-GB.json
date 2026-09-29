@@ -20,7 +20,8 @@
       "title": "Loading your workspace",
       "identity": "Organisations and team",
       "requests": "Registration requests",
-      "collections": "Properties, jobs, and desk data"
+      "collections": "Properties, jobs, and desk data",
+      "failed": "Loading stopped before it finished."
     },
     "notFoundTitle": "Page not found",
     "notFoundBody": "The page you’re looking for doesn’t exist or has moved.",

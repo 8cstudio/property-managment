@@ -45,15 +45,23 @@ export function DeskBootLoader({ step }: { step: DeskBootStep }) {
 }
 
 /** Non-blocking sync bar while more desk data loads in the background. */
-export function DeskBootFloating({ step }: { step: DeskBootStep }) {
+export function DeskBootFloating({
+  step,
+  failed = false,
+  onRetry,
+}: {
+  step: DeskBootStep;
+  failed?: boolean;
+  onRetry?: () => void;
+}) {
   const t = useTranslations("common");
-  const label = bootLabel(step, t);
+  const label = failed ? t("deskBoot.failed") : bootLabel(step, t);
   const pct = STEP_PERCENT[step];
 
   return (
     <div
       className="desk-boot desk-boot--floating"
-      aria-busy="true"
+      aria-busy={failed ? undefined : true}
       aria-live="polite"
       role="status"
     >
@@ -69,6 +77,11 @@ export function DeskBootFloating({ step }: { step: DeskBootStep }) {
         <div className="desk-boot__fill" style={{ width: `${pct}%` }} />
       </div>
       <p className="hint desk-boot__step">{label}</p>
+      {failed && onRetry ? (
+        <button type="button" className="desk-boot__retry" onClick={onRetry}>
+          {t("retry")}
+        </button>
+      ) : null}
     </div>
   );
 }

@@ -16,8 +16,15 @@ import {
   mutate,
   patchUserInCache,
   promoteSuperAdmin,
+  patchCachedIdentity,
   saveDeskCollectionsCached,
 } from "./store";
+import {
+  loadDeskCollectionsRow,
+  loadOrgRequestsFromPostgres,
+  loadOrgsFromPostgres,
+  loadStaffFromPostgres,
+} from "./supabase-persist";
 import {
   type AppUser,
   type DeskCollections,
@@ -144,6 +151,11 @@ export async function ensureSuperAdminByEmail(email: string): Promise<void> {
 // ---- Desk collections (shared demo data) -----------------------------------
 
 export async function getDeskCollections(): Promise<DeskCollections | null> {
+  if (backendMode === "supabase") {
+    const data = await loadDeskCollectionsRow();
+    patchCachedIdentity({ deskCollections: data });
+    return data;
+  }
   const db = await ensureHeavyDbLoaded();
   return db.deskCollections;
 }
@@ -157,6 +169,11 @@ export async function saveDeskCollections(
 // ---- Organisation requests (public submit, super-admin review) --------------
 
 export async function listOrgRequests(): Promise<OrgRequest[]> {
+  if (backendMode === "supabase") {
+    const requests = await loadOrgRequestsFromPostgres();
+    patchCachedIdentity({ requests });
+    return requests;
+  }
   const db = await loadDb();
   return db.requests;
 }
@@ -199,6 +216,11 @@ export async function hasPendingOrgRequestForCompany(
 // ---- Organisations ---------------------------------------------------------
 
 export async function listAllOrgs(): Promise<Org[]> {
+  if (backendMode === "supabase") {
+    const orgs = await loadOrgsFromPostgres();
+    patchCachedIdentity({ orgs });
+    return orgs;
+  }
   const db = await loadDb();
   return db.orgs;
 }
@@ -230,6 +252,11 @@ export async function updateOrg(
 // ---- Staff / memberships ---------------------------------------------------
 
 export async function listAllStaff(): Promise<StaffUser[]> {
+  if (backendMode === "supabase") {
+    const staff = await loadStaffFromPostgres();
+    patchCachedIdentity({ staff });
+    return staff;
+  }
   const db = await loadDb();
   return db.staff;
 }

@@ -20,11 +20,11 @@ async function jsonOrThrow<T>(res: Response): Promise<T> {
 }
 
 /** Load organisations + memberships, scoped to the signed-in user. */
-export async function fetchIdentity(): Promise<{
+export async function fetchIdentity(signal?: AbortSignal): Promise<{
   orgs: Org[];
   staff: StaffUser[];
 }> {
-  const res = await fetch("/api/v1/orgs", { cache: "no-store" });
+  const res = await fetch("/api/v1/orgs", { cache: "no-store", signal });
   return jsonOrThrow(res);
 }
 
@@ -111,8 +111,10 @@ export async function removeOrgUserApi(
 }
 
 /** Load the shared desk collections, or null if none have been saved yet. */
-export async function fetchDeskCollections(): Promise<DeskCollections | null> {
-  const res = await fetch("/api/v1/desk", { cache: "no-store" });
+export async function fetchDeskCollections(
+  signal?: AbortSignal,
+): Promise<DeskCollections | null> {
+  const res = await fetch("/api/v1/desk", { cache: "no-store", signal });
   const body = await jsonOrThrow<{ collections: DeskCollections | null }>(res);
   return body.collections;
 }

@@ -171,6 +171,45 @@ function mapMessage(row: MessageRow): ChatMessage {
   };
 }
 
+/** Organisations only. Does not load sessions, chat, or the full in-memory database. */
+export async function loadOrgsFromPostgres(): Promise<Org[]> {
+  const db = getSql();
+  const rows = await db<{ id: string; data: Org }[]>`
+    select id, data from organisations
+  `;
+  return rows.map((row) => row.data);
+}
+
+/** Memberships only. */
+export async function loadStaffFromPostgres(): Promise<StaffUser[]> {
+  const db = getSql();
+  const rows = await db<StaffRow[]>`
+    select id, org_id, name, email, role, scope, status, status_note
+    from org_memberships
+  `;
+  return rows.map(mapStaff);
+}
+
+/** Registration requests only. */
+export async function loadOrgRequestsFromPostgres(): Promise<OrgRequest[]> {
+  const db = getSql();
+  const rows = await db<RequestRow[]>`
+    select id, company, contact, email, phone, country, branch, about,
+           member_years, member_count, min_properties, status
+    from org_registration_requests
+  `;
+  return rows.map(mapRequest);
+}
+
+/** Desk JSON document only. Does not load chat history. */
+export async function loadDeskCollectionsRow(): Promise<DeskCollections | null> {
+  const db = getSql();
+  const rows = await db<{ data: DeskCollections | null }[]>`
+    select data from desk_collections where id = 'default'
+  `;
+  return rows[0]?.data ?? null;
+}
+
 /** Auth, orgs, sessions — skip chat + desk JSON (loaded on demand). */
 export async function loadDbCoreFromPostgres(): Promise<Omit<Db, "conversations" | "messages" | "deskCollections"> & {
   conversations: Conversation[];

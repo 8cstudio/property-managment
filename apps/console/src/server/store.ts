@@ -38,6 +38,21 @@ export function mergeUserIntoCache(user: AppUser): void {
   else cache.users.push(user);
 }
 
+export function patchCachedIdentity(patch: {
+  orgs?: Db["orgs"];
+  staff?: Db["staff"];
+  requests?: Db["requests"];
+  deskCollections?: Db["deskCollections"];
+}): void {
+  if (!cache) return;
+  if (patch.orgs) cache.orgs = patch.orgs;
+  if (patch.staff) cache.staff = patch.staff;
+  if (patch.requests) cache.requests = patch.requests;
+  if (patch.deskCollections !== undefined) {
+    cache.deskCollections = patch.deskCollections;
+  }
+}
+
 export function patchUserInCache(
   userId: string,
   patch: Partial<Pick<AppUser, "activated" | "name" | "email">>,
