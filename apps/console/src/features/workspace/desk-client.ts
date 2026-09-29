@@ -24,7 +24,10 @@ export async function fetchIdentity(signal?: AbortSignal): Promise<{
   orgs: Org[];
   staff: StaffUser[];
 }> {
-  const res = await fetch("/api/v1/orgs", { cache: "no-store", signal });
+  const res = await fetch("/api/v1/orgs", {
+    cache: "no-store",
+    ...(signal ? { signal } : {}),
+  });
   return jsonOrThrow(res);
 }
 
@@ -114,7 +117,10 @@ export async function removeOrgUserApi(
 export async function fetchDeskCollections(
   signal?: AbortSignal,
 ): Promise<DeskCollections | null> {
-  const res = await fetch("/api/v1/desk", { cache: "no-store", signal });
+  const res = await fetch("/api/v1/desk", {
+    cache: "no-store",
+    ...(signal ? { signal } : {}),
+  });
   const body = await jsonOrThrow<{ collections: DeskCollections | null }>(res);
   return body.collections;
 }

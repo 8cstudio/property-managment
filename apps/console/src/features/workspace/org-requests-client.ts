@@ -36,7 +36,10 @@ export async function submitOrgRequestApi(input: {
 export async function fetchOrgRequestsApi(
   signal?: AbortSignal,
 ): Promise<OrgRequest[]> {
-  const res = await fetch("/api/v1/org-requests", { cache: "no-store", signal });
+  const res = await fetch("/api/v1/org-requests", {
+    cache: "no-store",
+    ...(signal ? { signal } : {}),
+  });
   if (!res.ok) throw new Error(await readError(res));
   const body = (await res.json()) as { requests: OrgRequest[] };
   return body.requests;
