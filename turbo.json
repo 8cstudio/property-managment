@@ -1,5 +1,11 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalPassThroughEnv": [
+    "SUPABASE_*",
+    "DATABASE_URL",
+    "SESSION_SECRET",
+    "EZZI_SUPER_ADMIN_*"
+  ],
   "tasks": {
     "dev": {
       "cache": false,
