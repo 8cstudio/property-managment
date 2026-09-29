@@ -23,6 +23,7 @@ export { DeskStack, DeskToolbar } from "./desk-toolbar";
 export { FieldError } from "./field-error";
 export { FieldList } from "./field-list";
 export { IconButton } from "./icon-button";
+export { EzziLoader, LottiePlayer } from "./lottie-player";
 export {
   Hint,
   Notice,

@@ -17,8 +17,7 @@ export function CreateOfficePanel({
   const router = useRouter();
   const searchParams = useSearchParams();
   const tf = useTranslations("forms");
-  const orgId =
-    orgIdProp ?? searchParams.get("org") ?? "northbridge";
+  const orgId = orgIdProp ?? searchParams.get("org") ?? "";
   const { api } = useDesk();
   const { pending, run } = usePendingAction();
   const [name, setName] = useState("");

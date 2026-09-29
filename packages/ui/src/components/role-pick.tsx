@@ -1,7 +1,6 @@
 "use client";
 
 import type { LucideIcon } from "lucide-react";
-import { motion } from "motion/react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -14,7 +13,6 @@ export function RolePickCard({
   title,
   description,
   icon: Icon,
-  index = 0,
   featured = false,
 }: {
   href: string;
@@ -25,11 +23,7 @@ export function RolePickCard({
   featured?: boolean;
 }) {
   return (
-    <motion.li
-      initial={{ opacity: 0, y: 18, scale: 0.98 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ delay: index * 0.04, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-    >
+    <li>
       <Link
         className={`pick pick--portal${featured ? " pick--featured" : ""}`}
         href={href}
@@ -43,6 +37,6 @@ export function RolePickCard({
         <span>{description}</span>
         <em className="pick__cta">Open</em>
       </Link>
-    </motion.li>
+    </li>
   );
 }

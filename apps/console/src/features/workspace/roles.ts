@@ -65,6 +65,7 @@ export const roleNav: Record<
     { href: "modules", label: "Modules", key: "modules" },
     { href: "audit", label: "Audit", key: "audit" },
     { href: "reports", label: "Reports", key: "reports" },
+    { href: "platform", label: "Ezzi settings", key: "platformSettings" },
   ],
   "org-admin": [
     { href: "", label: "Dashboard", key: "dashboard" },
@@ -147,11 +148,12 @@ export function canRegister(role: string): boolean {
   return !signInOnly.has(role);
 }
 
-export function needsVerify(role: string): boolean {
-  return role === "tenant";
+/** Email verification is disabled for now. */
+export function needsVerify(_role: string): boolean {
+  return false;
 }
 
-/** Staff sign-in requires a second factor in the mock console. */
-export function requiresMfa(role: string): boolean {
-  return role !== "tenant" && role !== "landlord" && role !== "contractor";
+/** MFA is disabled for now (no second factor on any role). */
+export function requiresMfa(_role: string): boolean {
+  return false;
 }

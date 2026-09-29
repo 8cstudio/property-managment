@@ -2,7 +2,6 @@
 
 import { ExternalLink } from "lucide-react";
 import Link from "next/link";
-import { motion } from "motion/react";
 import { type CSSProperties, useEffect, useMemo, useState } from "react";
 import {
   Area,
@@ -243,15 +242,10 @@ export function MetricsRiver({
         >
           All lines
         </button>
-        {enriched.map((metric, index) => {
+        {enriched.map((metric) => {
           const on = activeTab === metric.key;
           return (
-            <motion.div
-              key={metric.key}
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.03, duration: 0.25 }}
-            >
+            <div key={metric.key}>
               <button
                 type="button"
                 role="tab"
@@ -267,7 +261,7 @@ export function MetricsRiver({
                   <span className="metrics-river__tab-badge">{metric.badge}</span>
                 ) : null}
               </button>
-            </motion.div>
+            </div>
           );
         })}
       </div>

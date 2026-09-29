@@ -1,8 +1,8 @@
 import type { DeskState } from "./data";
 
-/** Mock tenant org for org-admin and staff roles. */
+/** The organisation the current org-admin/staff user manages (first in scope). */
 export function managedOrgId(state: DeskState): string {
-  return state.orgs.find((item) => item.id === "northbridge")?.id ?? state.orgs[0]?.id ?? "northbridge";
+  return state.orgs[0]?.id ?? "";
 }
 
 export function managedOrg(state: DeskState) {

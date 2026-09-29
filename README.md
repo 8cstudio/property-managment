@@ -58,7 +58,18 @@ The home page is a set of cards.
 
 Staff roles do not have public registration. Super Admin, Operations, Property, Lettings, Compliance, Finance, and Migration only sign in. Organisation Admin, Landlord, Tenant, and Contractor can also create an account.
 
-On a sign-in form, use any real email address and a password of at least 8 characters. The side menu stays in place when you change pages inside a role. **Sign out** is at the bottom of that menu. **Home** in the top bar returns to the role cards.
+### Super Admin (local default)
+
+On the home page, open **Super Admin** → **Sign in**. The platform bootstrap account (local file store or first-run Supabase seed) uses:
+
+| | |
+| --- | --- |
+| Email | `admin@ezzi.app` |
+| Password | `admin12345` |
+
+Override in `apps/console/.env.local` with `EZZI_SUPER_ADMIN_EMAIL`, `EZZI_SUPER_ADMIN_PASSWORD`, and `EZZI_SUPER_ADMIN_NAME` (see `apps/console/.env.example`). Change these before any shared or production deploy.
+
+Other staff sign-in flows may still use demo rules until those roles are seeded in the database. The side menu stays in place when you change pages inside a role. **Sign out** is at the bottom of that menu. **Home** in the top bar returns to the role cards.
 
 The round icon beside Home switches light and dark. The choice is kept in the browser.
 

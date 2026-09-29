@@ -15,6 +15,7 @@ import { useEffect, useMemo, useState } from "react";
 import { isEmail } from "../auth";
 import { managedOrgId } from "../org-scope";
 import { useDesk } from "../store";
+import { assignableRoleLabels } from "../staff-roles";
 import { RecordTabs } from "./record-tabs";
 
 export function UserDetailPanel({
@@ -55,7 +56,7 @@ export function UserDetailPanel({
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("Operations");
-  const [scope, setScope] = useState("Peckham");
+  const [scope, setScope] = useState("All branches");
   const [statusReason, setStatusReason] = useState("");
   const [removeReason, setRemoveReason] = useState("");
 
@@ -110,21 +111,8 @@ export function UserDetailPanel({
     );
   }
 
-  const branchOptions =
-    org?.offices.map((office) => office.name) ?? [
-      "Peckham",
-      "Deptford",
-      "Greenwich",
-    ];
-  const roleOptions = orgAdmin
-    ? ["Operations", "Lettings", "Compliance", "Finance", "Organisation Admin"]
-    : [
-        "Organisation Admin",
-        "Operations",
-        "Lettings",
-        "Compliance",
-        "Finance",
-      ];
+  const branchOptions = org?.offices.map((office) => office.name) ?? [];
+  const roleOptions = assignableRoleLabels(org);
 
   const canSaveProfile =
     name.trim().length > 0 && isEmail(email.trim()) && !pending;

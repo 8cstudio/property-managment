@@ -5,11 +5,13 @@ import { Sparkles } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { roleCards } from "@/features/workspace/roles";
 import { APP_DISPLAY_NAME } from "@/i18n/brand";
+import { usePlatformBrand } from "@/features/platform-brand/brand-provider";
 import { roleIcons } from "./role-icons";
 
 export function GateBoard() {
   const t = useTranslations("gate");
   const tRoles = useTranslations("roles");
+  const brand = usePlatformBrand();
 
   return (
     <PageMain className="gate-page">
@@ -25,7 +27,7 @@ export function GateBoard() {
         <RolePickCard
           href="/visit"
           title={t("visitor")}
-          description={t("visitorDescription", { brand: APP_DISPLAY_NAME })}
+          description={t("visitorDescription", { brand: brand.name || APP_DISPLAY_NAME })}
           icon={Sparkles}
           index={0}
           featured
@@ -35,7 +37,7 @@ export function GateBoard() {
           return (
             <RolePickCard
               key={role.id}
-              href={`/role/${role.id}/sign-in`}
+              href={`/role/${role.id}`}
               title={tRoles(`${role.id}.name`)}
               description={tRoles(`${role.id}.line`)}
               {...(Icon ? { icon: Icon } : {})}

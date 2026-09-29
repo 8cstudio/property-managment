@@ -1,12 +1,17 @@
 "use client";
 
-import { Shimmer, Work } from "@ezzi/ui";
+import {
+  DeskBootFloating,
+  type DeskBootStep,
+} from "./desk-boot-loader";
 import {
   createContext,
   type ReactNode,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import {
@@ -16,18 +21,66 @@ import {
   type OnboardingStep,
   defaultOrgSettings,
   seedOffice,
-  type Org,
+  type OrgRoleDefinition,
   type OrgSettings,
 } from "./data";
+import {
+  isAssignableOrgRole,
+  normalizeRoleCatalog,
+  resolveStaffAccessRole,
+} from "./staff-roles";
+import * as deskClient from "./desk-client";
+import type { DeskCollections } from "./desk-client";
 import { flashDeskError, flashDeskSuccess } from "./desk-feedback";
+import {
+  collectMetricValues,
+  upsertMetricSnapshots,
+} from "@/features/dashboard/metric-snapshots";
+import { stripOrphanDeskData } from "./desk-sanitize";
+import * as orgRequestsClient from "./org-requests-client";
+import { apiGetSession, type Viewer } from "./session-client";
+
+/** Current signed-in user for audit actor labels (set by DeskProvider). */
+const deskViewerRef: { current: Viewer | null } = { current: null };
+
+/** Everything except identity (orgs/users), which comes from the orgs API. */
+function pickCollections(state: DeskState): DeskCollections {
+  return {
+    properties: state.properties,
+    work: state.work,
+    listings: state.listings,
+    applicants: state.applicants,
+    viewings: state.viewings,
+    certificates: state.certificates,
+    jobs: state.jobs,
+    payments: state.payments,
+    arrears: state.arrears,
+    statements: state.statements,
+    migrations: state.migrations,
+    migrationIssues: state.migrationIssues,
+    migrationMappings: state.migrationMappings,
+    documents: state.documents,
+    requirements: state.requirements,
+    rentSchedules: state.rentSchedules,
+    integrations: state.integrations,
+    integrationLogs: state.integrationLogs,
+    audit: state.audit,
+    onboarding: state.onboarding,
+    reminderDays: state.reminderDays,
+    notice: state.notice,
+    security: state.security,
+    metricSnapshots: state.metricSnapshots ?? [],
+  };
+}
 
 export type DeskApi = {
   createOrg: (input: {
     name: string;
     branch: string;
     admin: string;
+    adminName?: string;
     modules?: Record<string, boolean>;
-  }) => void;
+  }) => Promise<void>;
   setOrgStatus: (
     id: string,
     status: DeskState["orgs"][number]["status"],
@@ -43,6 +96,18 @@ export type DeskApi = {
     },
   ) => void;
   saveOrgSettings: (orgId: string, input: Partial<OrgSettings>) => void;
+  saveOrgStaffRoles: (
+    orgId: string,
+    input: {
+      roleCatalog: OrgRoleDefinition[];
+      disabledRoleLabels: string[];
+    },
+  ) => void;
+  renameOrgStaffRole: (
+    orgId: string,
+    fromLabel: string,
+    toLabel: string,
+  ) => void;
   addOrgIntegration: (
     orgId: string,
     input: { name: string; kind: string },
@@ -86,9 +151,18 @@ export type DeskApi = {
     company: string;
     contact: string;
     email: string;
+    phone: string;
+    country: string;
     branch: string;
-  }) => void;
-  decideRequest: (id: string, status: "Approved" | "Declined") => void;
+    about: string;
+    memberYears: number;
+    memberCount: number;
+    minProperties: number;
+  }) => Promise<void>;
+  decideRequest: (
+    id: string,
+    status: "Approved" | "Declined",
+  ) => Promise<void>;
   saveSettings: (days: string) => void;
   testIntegration: (id: string) => void;
   saveIntegrationConfig: (
@@ -148,9 +222,11 @@ export type DeskApi = {
   }) => void;
 };
 
-const DeskContext = createContext<{ state: DeskState; api: DeskApi } | null>(
-  null,
-);
+const DeskContext = createContext<{
+  state: DeskState;
+  api: DeskApi;
+  viewer: Viewer | null;
+} | null>(null);
 
 function stamp(): string {
   return new Intl.DateTimeFormat("en-GB", {
@@ -172,7 +248,10 @@ function withAudit(
       {
         id: `a-${Date.now()}`,
         when: `Today ${stamp()}`,
-        actor: "You",
+        actor:
+          deskViewerRef.current?.user.name ||
+          deskViewerRef.current?.user.email ||
+          "Staff",
         action,
         org,
       },
@@ -189,189 +268,198 @@ export function DeskProvider({
   children: ReactNode;
 }) {
   const [state, setState] = useState<DeskState | null>(null);
+  const [bootStep, setBootStep] = useState<DeskBootStep | null>(1);
+  const [viewer, setViewer] = useState<Viewer | null>(null);
+  const stateRef = useRef<DeskState | null>(null);
+  const collectionsLoadedRef = useRef(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   useEffect(() => {
-    const key = "ezzi-desk";
-    const saved = sessionStorage.getItem(key);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved) as DeskState;
-        const seen = new Set<string>();
-        if (!parsed.requests) parsed.requests = [];
-        if (!parsed.integrationLogs) parsed.integrationLogs = [];
-        parsed.integrations = parsed.integrations.map((row) => ({
-          ...row,
-          kind: row.kind ?? "Connection",
-          endpoint: row.endpoint ?? "",
-          apiKeyHint: row.apiKeyHint ?? "",
-          webhookUrl: row.webhookUrl ?? "",
-          syncCadence: row.syncCadence ?? "Manual",
-          lastSyncAt: row.lastSyncAt ?? "Unknown",
-          lastError: row.lastError ?? "",
-        }));
-        parsed.onboarding = parsed.onboarding.map((row) => ({
-          ...row,
-          summary: row.summary ?? "",
-        }));
-        parsed.listings = parsed.listings.map((row) => ({
-          ...row,
-          rent: row.rent ?? "",
-          bedrooms: row.bedrooms ?? "",
-          description: row.description ?? "",
-        }));
-        parsed.requirements = parsed.requirements.map((row) => ({
-          ...row,
-          evidence: row.evidence ?? "",
-          owner: row.owner ?? "",
-        }));
-        parsed.rentSchedules = parsed.rentSchedules.map((row) => ({
-          ...row,
-          nextDue: row.nextDue ?? "1 Oct 2026",
-          method: row.method ?? "Standing order",
-        }));
-        parsed.users = parsed.users.map((row) => ({
-          ...row,
-          statusNote: row.statusNote ?? "",
-        }));
-        parsed.orgs = parsed.orgs.map((org) => ({
-          ...org,
-          legalName: org.legalName ?? org.name,
-          companyNumber: org.companyNumber ?? "",
-          billingEmail: org.billingEmail ?? "",
-          settings: {
-            ...defaultOrgSettings(),
-            ...org.settings,
-            reminderDays:
-              org.settings?.reminderDays ?? parsed.reminderDays ?? "30",
-          },
-        }));
-        parsed.notice = "";
-        parsed.orgs = parsed.orgs.map((org) => {
-          const legacy = org as Org & { branches?: string[] };
-          let next: (typeof parsed.orgs)[number] = org;
-          if (!legacy.offices) {
-            next = {
-              ...org,
-              offices: legacy.branches?.length
-                ? legacy.branches.map((name) => seedOffice(org.id, name))
-                : [],
-            };
-          }
-          if (!seen.has(next.id)) {
-            seen.add(next.id);
-            return next;
-          }
-          const id = `org-${globalThis.crypto.randomUUID()}`;
-          seen.add(id);
-          return { ...next, id };
-        });
-        setState(parsed);
-        return;
-      } catch {
-        sessionStorage.removeItem(key);
-      }
-    }
-    setState(createSeed());
+    let active = true;
+    void apiGetSession().then((v) => {
+      if (!active) return;
+      deskViewerRef.current = v;
+      setViewer(v);
+    });
+    return () => {
+      active = false;
+    };
   }, [role]);
 
+  /** Reload organisations + memberships from the API (source of truth). */
+  const refreshIdentity = useCallback(async () => {
+    try {
+      const { orgs, staff } = await deskClient.fetchIdentity();
+      setState((cur) => (cur ? { ...cur, orgs, users: staff } : cur));
+    } catch {
+      /* keep current state */
+    }
+  }, []);
+
   useEffect(() => {
-    if (!state) return;
-    sessionStorage.setItem(
-      "ezzi-desk",
-      JSON.stringify({ ...state, notice: "" }),
-    );
-  }, [role, state]);
+    let active = true;
+    collectionsLoadedRef.current = false;
+    const seed = createSeed();
+    setState(seed);
+    setBootStep(1);
+
+    const mergeState = (patch: Partial<DeskState> | ((cur: DeskState) => DeskState)) => {
+      setState((cur) => {
+        const base = cur ?? seed;
+        return typeof patch === "function" ? patch(base) : { ...base, ...patch };
+      });
+    };
+
+    void (async () => {
+      try {
+        const { orgs, staff } = await deskClient.fetchIdentity();
+        if (!active) return;
+        mergeState({ orgs, users: staff });
+      } catch {
+        /* not signed in yet, or offline */
+      }
+      if (!active) return;
+      setBootStep(2);
+
+      try {
+        const requests = await orgRequestsClient.fetchOrgRequestsApi();
+        if (!active) return;
+        mergeState({ requests });
+      } catch {
+        /* super-admin only */
+      }
+      if (!active) return;
+      setBootStep(3);
+
+      try {
+        const collections = await deskClient.fetchDeskCollections();
+        if (!active) return;
+        if (collections) {
+          const { requests: _legacyRequests, ...rest } =
+            collections as DeskCollections & {
+              requests?: DeskState["requests"];
+            };
+          mergeState((cur) =>
+            stripOrphanDeskData({
+              ...cur,
+              ...rest,
+              metricSnapshots: rest.metricSnapshots ?? [],
+            }),
+          );
+        } else {
+          await deskClient.saveDeskCollections(pickCollections(seed));
+        }
+        collectionsLoadedRef.current = true;
+      } catch {
+        /* keep seed; do not persist until a successful load */
+      }
+
+      if (!active) return;
+      setBootStep(null);
+    })();
+
+    return () => {
+      active = false;
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [role]);
+
+  // Debounced persistence of desk collections after any local mutation.
+  useEffect(() => {
+    if (!state || !collectionsLoadedRef.current) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      const current = stateRef.current;
+      if (!current) return;
+      const metricSnapshots = upsertMetricSnapshots(
+        current.metricSnapshots ?? [],
+        collectMetricValues(current),
+      );
+      const snapshotsChanged =
+        JSON.stringify(metricSnapshots) !==
+        JSON.stringify(current.metricSnapshots ?? []);
+      const next = snapshotsChanged
+        ? { ...current, metricSnapshots }
+        : current;
+      if (snapshotsChanged) {
+        stateRef.current = next;
+        setState(next);
+      }
+      void deskClient.saveDeskCollections(pickCollections(next)).catch(() => {
+        /* best-effort; the next mutation will retry */
+      });
+    }, 600);
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [state]);
 
   const api = useMemo<DeskApi>(
     () => ({
-      createOrg: ({ name, branch, admin, modules }) => {
-        let success: string | null = null;
-        let duplicate = false;
-        setState((current) => {
-          if (!current) return current;
-          const company = name.trim();
-          const taken = current.orgs.some(
-            (org) => org.name.trim().toLowerCase() === company.toLowerCase(),
+      createOrg: async ({ name, branch, admin, adminName, modules }) => {
+        try {
+          const { org, staff } = await deskClient.createOrgApi({
+            name: name.trim(),
+            branch: branch.trim(),
+            adminEmail: admin.trim(),
+            ...(adminName ? { adminName: adminName.trim() } : {}),
+            ...(modules ? { modules } : {}),
+          });
+          setState((current) =>
+            current
+              ? {
+                  ...current,
+                  orgs: [...current.orgs, org],
+                  users: [...current.users, staff],
+                }
+              : current,
           );
-          if (taken) {
-            duplicate = true;
-            return current;
-          }
-          const id = `org-${globalThis.crypto.randomUUID()}`;
-          success = `${company} is in Setup. Invite sent to ${admin.trim()}.`;
-          return withAudit(
-            {
-              ...current,
-              orgs: [
-                ...current.orgs,
-                {
-                  id,
-                  name: company,
-                  status: "Setup",
-                  offices: [
-                    seedOffice(id, branch.trim(), {
-                      manager: admin.trim(),
-                    }),
-                  ],
-                  modules: modules ?? {
-                    Properties: true,
-                    Lettings: true,
-                    Compliance: true,
-                    Maintenance: true,
-                    Finance: false,
-                    Migration: false,
-                  },
-                  reason: "",
-                  legalName: company,
-                  companyNumber: "",
-                  billingEmail: admin.trim().toLowerCase(),
-                  settings: defaultOrgSettings(),
-                },
-              ],
-              users: [
-                ...current.users,
-                {
-                  id: `u-${globalThis.crypto.randomUUID()}`,
-                  name: admin.trim(),
-                  email: admin.trim().toLowerCase(),
-                  role: "Organisation Admin",
-                  scope: branch.trim(),
-                  status: "Invited",
-                  orgId: id,
-                  statusNote: "",
-                },
-              ],
-            },
-            `Created organisation ${company}`,
-            company,
-            success,
+          flashDeskSuccess(
+            staff.status === "Active"
+              ? `${org.name} is in Setup. ${staff.email} already has EZZI access as organisation admin.`
+              : `${org.name} is in Setup. ${staff.email} activates by entering their email on the sign-in page to set a password.`,
           );
-        });
-        if (duplicate) {
-          flashDeskError("An organisation with this name already exists.");
-        } else if (success) {
-          flashDeskSuccess(success);
+        } catch (error) {
+          flashDeskError(
+            error instanceof Error
+              ? error.message
+              : "Could not create organisation.",
+          );
         }
       },
       setOrgStatus: (id, status, reason) => {
-        let success: string | null = null;
-        setState((current) => {
-          if (!current) return current;
-          const org = current.orgs.find((item) => item.id === id);
-          success = `${org?.name ?? "Organisation"} is now ${status}. Records were kept.`;
-          return withAudit(
-            {
-              ...current,
-              orgs: current.orgs.map((item) =>
-                item.id === id ? { ...item, status, reason } : item,
-              ),
-            },
-            `${status} ${org?.name ?? "organisation"}: ${reason}`,
-            org?.name ?? "",
-            success,
-          );
-        });
-        if (success) flashDeskSuccess(success);
+        const org = stateRef.current?.orgs.find((item) => item.id === id);
+        setState((current) =>
+          current
+            ? withAudit(
+                {
+                  ...current,
+                  orgs: current.orgs.map((item) =>
+                    item.id === id ? { ...item, status, reason } : item,
+                  ),
+                },
+                `${status} ${org?.name ?? "organisation"}: ${reason}`,
+                org?.name ?? "",
+                "",
+              )
+            : current,
+        );
+        deskClient
+          .patchOrgApi(id, { status, reason })
+          .then(() =>
+            flashDeskSuccess(
+              `${org?.name ?? "Organisation"} is now ${status}. Records were kept.`,
+            ),
+          )
+          .catch((error) => {
+            flashDeskError(
+              error instanceof Error ? error.message : "Could not update status.",
+            );
+            void refreshIdentity();
+          });
       },
       updateOrgProfile: (orgId, input) => {
         setState((current) => {
@@ -401,6 +489,19 @@ export function DeskProvider({
             "Saved",
           );
         });
+        deskClient
+          .patchOrgApi(orgId, {
+            name: input.name.trim(),
+            legalName: input.legalName.trim(),
+            companyNumber: input.companyNumber.trim(),
+            billingEmail: input.billingEmail.trim().toLowerCase(),
+          })
+          .catch((error) => {
+            flashDeskError(
+              error instanceof Error ? error.message : "Could not save profile.",
+            );
+            void refreshIdentity();
+          });
         flashDeskSuccess("Organisation profile saved.");
       },
       saveOrgSettings: (orgId, input) => {
@@ -424,7 +525,142 @@ export function DeskProvider({
             "Saved",
           );
         });
+        deskClient.patchOrgApi(orgId, { settings: input }).catch((error) => {
+          flashDeskError(
+            error instanceof Error ? error.message : "Could not save settings.",
+          );
+          void refreshIdentity();
+        });
         flashDeskSuccess("Organisation settings saved.");
+      },
+      saveOrgStaffRoles: (orgId, input) => {
+        const org = stateRef.current?.orgs.find((item) => item.id === orgId);
+        if (!org) {
+          flashDeskError("Organisation not found.");
+          return;
+        }
+        const roleCatalog = normalizeRoleCatalog(input.roleCatalog);
+        const disabledRoleLabels = input.disabledRoleLabels;
+        const previewOrg = {
+          ...org,
+          settings: { ...org.settings, roleCatalog, disabledRoleLabels },
+        };
+        const team =
+          stateRef.current?.users.filter((user) => user.orgId === orgId) ?? [];
+        const invalid = team.find(
+          (user) => !isAssignableOrgRole(user.role, previewOrg),
+        );
+        if (invalid) {
+          flashDeskError(
+            `${invalid.name} still uses “${invalid.role}”. Reassign them before disabling or removing that role.`,
+          );
+          return;
+        }
+        const settings = { roleCatalog, disabledRoleLabels };
+        setState((current) => {
+          if (!current) return current;
+          return withAudit(
+            {
+              ...current,
+              orgs: current.orgs.map((item) =>
+                item.id === orgId
+                  ? { ...item, settings: { ...item.settings, ...settings } }
+                  : item,
+              ),
+            },
+            "Updated staff roles",
+            org.name,
+            "Saved",
+          );
+        });
+        deskClient.patchOrgApi(orgId, { settings }).catch((error) => {
+          flashDeskError(
+            error instanceof Error ? error.message : "Could not save staff roles.",
+          );
+          void refreshIdentity();
+        });
+        flashDeskSuccess("Staff roles saved.");
+      },
+      renameOrgStaffRole: (orgId, fromLabel, toLabel) => {
+        const from = fromLabel.trim();
+        const to = toLabel.trim();
+        if (!from || !to || from === to) return;
+        const org = stateRef.current?.orgs.find((item) => item.id === orgId);
+        if (!org) {
+          flashDeskError("Organisation not found.");
+          return;
+        }
+        const access = resolveStaffAccessRole(from, org);
+        if (!access) {
+          flashDeskError("That role cannot be renamed.");
+          return;
+        }
+        let roleCatalog = org.settings.roleCatalog ?? [];
+        if (!isAssignableOrgRole(to, { ...org, settings: { ...org.settings, roleCatalog } })) {
+          roleCatalog = normalizeRoleCatalog([
+            ...roleCatalog,
+            { label: to, access },
+          ]);
+        } else {
+          roleCatalog = roleCatalog.map((row) =>
+            row.label === from ? { ...row, label: to } : row,
+          );
+        }
+        const previewOrg = {
+          ...org,
+          settings: { ...org.settings, roleCatalog },
+        };
+        if (!isAssignableOrgRole(to, previewOrg)) {
+          flashDeskError("That role name is not allowed.");
+          return;
+        }
+        const affected =
+          stateRef.current?.users.filter(
+            (user) => user.orgId === orgId && user.role === from,
+          ) ?? [];
+        void (async () => {
+          try {
+            for (const user of affected) {
+              const staff = await deskClient.patchOrgUserApi(orgId, user.id, {
+                role: to,
+              });
+              setState((current) =>
+                current
+                  ? {
+                      ...current,
+                      users: current.users.map((item) =>
+                        item.id === user.id ? staff : item,
+                      ),
+                    }
+                  : current,
+              );
+            }
+            await deskClient.patchOrgApi(orgId, {
+              settings: { ...org.settings, roleCatalog },
+            });
+            setState((current) =>
+              current
+                ? {
+                    ...current,
+                    orgs: current.orgs.map((item) =>
+                      item.id === orgId
+                        ? {
+                            ...item,
+                            settings: { ...item.settings, roleCatalog },
+                          }
+                        : item,
+                    ),
+                  }
+                : current,
+            );
+            flashDeskSuccess("Role renamed for all affected members.");
+          } catch (error) {
+            flashDeskError(
+              error instanceof Error ? error.message : "Could not rename role.",
+            );
+            void refreshIdentity();
+          }
+        })();
       },
       addOrgIntegration: (orgId, input) => {
         const id = `i-${Date.now()}`;
@@ -460,205 +696,187 @@ export function DeskProvider({
         return id;
       },
       toggleModule: (orgId, name) => {
-        flashDeskSuccess(
-          `${name} access changed. Existing records stay.`,
+        const org = stateRef.current?.orgs.find((item) => item.id === orgId);
+        const nextModules = {
+          ...(org?.modules ?? {}),
+          [name]: !(org?.modules?.[name] ?? false),
+        };
+        flashDeskSuccess(`${name} access changed. Existing records stay.`);
+        setState((current) =>
+          current
+            ? {
+                ...current,
+                orgs: current.orgs.map((item) =>
+                  item.id === orgId ? { ...item, modules: nextModules } : item,
+                ),
+              }
+            : current,
         );
-        setState((current) => {
-          if (!current) return current;
-          return {
-            ...current,
-            orgs: current.orgs.map((org) =>
-              org.id === orgId
-                ? {
-                    ...org,
-                    modules: { ...org.modules, [name]: !org.modules[name] },
-                  }
-                : org,
-            ),
-          };
+        deskClient.patchOrgApi(orgId, { modules: nextModules }).catch((error) => {
+          flashDeskError(
+            error instanceof Error ? error.message : "Could not update modules.",
+          );
+          void refreshIdentity();
         });
       },
-      inviteUser: ({ name, email, role: userRole, scope, orgId = "northbridge" }) => {
-        let success: string | null = null;
-        let duplicate = false;
-        setState((current) => {
-          if (!current) return current;
-          const mail = email.trim().toLowerCase();
-          const taken = current.users.some(
-            (user) => user.email?.toLowerCase() === mail,
-          );
-          if (taken) {
-            duplicate = true;
-            return current;
-          }
-          const org =
-            current.orgs.find((item) => item.id === orgId)?.name ??
-            "Organisation";
-          success = `Invitation sent to ${mail}.`;
-          return withAudit(
-            {
-              ...current,
-              users: [
-                ...current.users,
-                {
-                  id: `u-${globalThis.crypto.randomUUID()}`,
-                  name,
-                  email: mail,
-                  role: userRole,
-                  scope,
-                  status: "Invited",
-                  orgId,
-                  statusNote: "",
-                },
-              ],
-            },
-            `Invited ${mail} as ${userRole}`,
-            org,
-            success,
-          );
-        });
-        if (duplicate) {
-          flashDeskError(
-            "This email already has an active or invited account.",
-          );
-        } else if (success) {
-          flashDeskSuccess(success);
+      inviteUser: ({ name, email, role: userRole, scope, orgId }) => {
+        const targetOrg = orgId ?? stateRef.current?.orgs[0]?.id;
+        if (!targetOrg) {
+          flashDeskError("No organisation selected for this invite.");
+          return;
         }
+        void (async () => {
+          try {
+            const staff = await deskClient.addOrgUserApi(targetOrg, {
+              name: name.trim(),
+              email: email.trim(),
+              role: userRole,
+              scope,
+            });
+            setState((current) =>
+              current
+                ? { ...current, users: [...current.users, staff] }
+                : current,
+            );
+            flashDeskSuccess(
+              staff.status === "Active"
+                ? `${staff.email} already has EZZI access and can sign in now.`
+                : `${staff.email} is invited. They activate by entering their email on the sign-in page to set a password.`,
+            );
+          } catch (error) {
+            flashDeskError(
+              error instanceof Error ? error.message : "Could not add this user.",
+            );
+          }
+        })();
       },
       updateUser: (id, input) => {
-        let duplicate = false;
-        setState((current) => {
-          if (!current) return current;
-          const user = current.users.find((item) => item.id === id);
-          const org =
-            current.orgs.find((item) => item.id === user?.orgId)?.name ?? "";
-          const mail = input.email.trim().toLowerCase();
-          const emailTaken = current.users.some(
-            (item) => item.id !== id && item.email.toLowerCase() === mail,
-          );
-          if (emailTaken) {
-            duplicate = true;
-            return current;
-          }
-          return withAudit(
-            {
-              ...current,
-              users: current.users.map((item) =>
-                item.id === id
-                  ? {
-                      ...item,
-                      name: input.name.trim(),
-                      email: mail,
-                      role: input.role,
-                      scope: input.scope,
-                    }
-                  : item,
-              ),
-            },
-            `Updated ${user?.name ?? "user"} profile and access`,
-            org,
-            "Saved",
-          );
-        });
-        if (duplicate) {
-          flashDeskError("Another user already uses this email.");
-        } else {
-          flashDeskSuccess("User details saved.");
+        const user = stateRef.current?.users.find((item) => item.id === id);
+        if (!user) {
+          flashDeskError("User not found.");
+          return;
         }
+        void (async () => {
+          try {
+            const staff = await deskClient.patchOrgUserApi(user.orgId, id, {
+              name: input.name.trim(),
+              email: input.email.trim(),
+              role: input.role,
+              scope: input.scope,
+            });
+            setState((current) =>
+              current
+                ? {
+                    ...current,
+                    users: current.users.map((item) =>
+                      item.id === id ? staff : item,
+                    ),
+                  }
+                : current,
+            );
+            flashDeskSuccess("User details saved.");
+          } catch (error) {
+            flashDeskError(
+              error instanceof Error ? error.message : "Could not save user.",
+            );
+          }
+        })();
       },
       setUserStatus: (id, status, reason) => {
-        setState((current) => {
-          if (!current) return current;
-          const user = current.users.find((item) => item.id === id);
-          const org =
-            current.orgs.find((item) => item.id === user?.orgId)?.name ?? "";
-          return withAudit(
-            {
-              ...current,
-              users: current.users.map((item) =>
-                item.id === id
-                  ? {
-                      ...item,
-                      status,
-                      statusNote: reason.trim(),
-                    }
-                  : item,
-              ),
-            },
-            `${status} ${user?.email ?? "user"}: ${reason.trim()}`,
-            org,
-            "Updated",
-          );
-        });
-        flashDeskSuccess(`User is now ${status}.`);
+        const user = stateRef.current?.users.find((item) => item.id === id);
+        if (!user) {
+          flashDeskError("User not found.");
+          return;
+        }
+        void (async () => {
+          try {
+            const staff = await deskClient.patchOrgUserApi(user.orgId, id, {
+              status,
+              statusNote: reason.trim(),
+            });
+            setState((current) =>
+              current
+                ? {
+                    ...current,
+                    users: current.users.map((item) =>
+                      item.id === id ? staff : item,
+                    ),
+                  }
+                : current,
+            );
+            flashDeskSuccess(`User is now ${status}.`);
+          } catch (error) {
+            flashDeskError(
+              error instanceof Error ? error.message : "Could not update user.",
+            );
+          }
+        })();
       },
-      removeUser: (id, reason) => {
-        setState((current) => {
-          if (!current) return current;
-          const user = current.users.find((item) => item.id === id);
-          if (!user) return current;
-          const org =
-            current.orgs.find((item) => item.id === user.orgId)?.name ?? "";
-          return withAudit(
-            {
-              ...current,
-              users: current.users.filter((item) => item.id !== id),
-            },
-            `Removed member ${user.email}: ${reason.trim()}`,
-            org,
-            "Removed",
-          );
-        });
-        flashDeskSuccess("Member removed from this organisation.");
+      removeUser: (id, _reason) => {
+        const user = stateRef.current?.users.find((item) => item.id === id);
+        if (!user) {
+          flashDeskError("User not found.");
+          return;
+        }
+        void (async () => {
+          try {
+            await deskClient.removeOrgUserApi(user.orgId, id);
+            setState((current) =>
+              current
+                ? {
+                    ...current,
+                    users: current.users.filter((item) => item.id !== id),
+                  }
+                : current,
+            );
+            flashDeskSuccess("Member removed from this organisation.");
+          } catch (error) {
+            flashDeskError(
+              error instanceof Error ? error.message : "Could not remove member.",
+            );
+          }
+        })();
       },
       resendUserInvite: (id) => {
-        setState((current) => {
-          if (!current) return current;
-          const user = current.users.find((item) => item.id === id);
-          const org =
-            current.orgs.find((item) => item.id === user?.orgId)?.name ?? "";
-          if (!user) return current;
-          return withAudit(
-            current,
-            `Resent invite to ${user.email}`,
-            org,
-            "Sent",
-          );
-        });
+        const user = stateRef.current?.users.find((item) => item.id === id);
+        if (!user) return;
         flashDeskSuccess("Invitation resent.");
       },
       createOffice: (orgId, input) => {
         const id = `${orgId}-${globalThis.crypto.randomUUID().slice(0, 8)}`;
-        setState((current) => {
-          if (!current) return current;
-          const org = current.orgs.find((item) => item.id === orgId);
-          const office: Office = {
-            id,
-            status: input.status ?? "Active",
-            name: input.name.trim(),
-            line1: input.line1.trim(),
-            line2: input.line2.trim(),
-            town: input.town.trim(),
-            postcode: input.postcode.trim(),
-            phone: input.phone.trim(),
-            email: input.email.trim().toLowerCase(),
-            manager: input.manager.trim(),
-            notes: input.notes.trim(),
-          };
-          return withAudit(
-            {
-              ...current,
-              orgs: current.orgs.map((item) =>
-                item.id === orgId
-                  ? { ...item, offices: [...item.offices, office] }
-                  : item,
-              ),
-            },
-            `Added office ${office.name}`,
-            org?.name ?? "",
-            "Created",
-          );
-        });
+        const office: Office = {
+          id,
+          status: input.status ?? "Active",
+          name: input.name.trim(),
+          line1: input.line1.trim(),
+          line2: input.line2.trim(),
+          town: input.town.trim(),
+          postcode: input.postcode.trim(),
+          phone: input.phone.trim(),
+          email: input.email.trim().toLowerCase(),
+          manager: input.manager.trim(),
+          notes: input.notes.trim(),
+        };
+        const org = stateRef.current?.orgs.find((item) => item.id === orgId);
+        const nextOffices = [...(org?.offices ?? []), office];
+        setState((current) =>
+          current
+            ? {
+                ...current,
+                orgs: current.orgs.map((item) =>
+                  item.id === orgId ? { ...item, offices: nextOffices } : item,
+                ),
+              }
+            : current,
+        );
+        deskClient
+          .patchOrgApi(orgId, { offices: nextOffices })
+          .catch((error) => {
+            flashDeskError(
+              error instanceof Error ? error.message : "Could not save office.",
+            );
+            void refreshIdentity();
+          });
         flashDeskSuccess(`${input.name.trim()} office created.`);
         return id;
       },
@@ -711,6 +929,27 @@ export function DeskProvider({
             "Saved",
           );
         });
+        {
+          const org0 = stateRef.current?.orgs.find((item) => item.id === orgId);
+          const nextOffices = (org0?.offices ?? []).map((office) =>
+            office.id === officeId
+              ? {
+                  ...office,
+                  ...input,
+                  name: input.name.trim(),
+                  email: input.email.trim().toLowerCase(),
+                }
+              : office,
+          );
+          deskClient
+            .patchOrgApi(orgId, { offices: nextOffices })
+            .catch((error) => {
+              flashDeskError(
+                error instanceof Error ? error.message : "Could not save office.",
+              );
+              void refreshIdentity();
+            });
+        }
         flashDeskSuccess("Office details saved.");
       },
       setOfficeStatus: (orgId, officeId, status, reason) => {
@@ -745,6 +984,28 @@ export function DeskProvider({
             "Updated",
           );
         });
+        {
+          const org0 = stateRef.current?.orgs.find((item) => item.id === orgId);
+          const nextOffices = (org0?.offices ?? []).map((office) =>
+            office.id === officeId
+              ? {
+                  ...office,
+                  status,
+                  notes: reason.trim()
+                    ? `${office.notes}\n${reason.trim()}`.trim()
+                    : office.notes,
+                }
+              : office,
+          );
+          deskClient
+            .patchOrgApi(orgId, { offices: nextOffices })
+            .catch((error) => {
+              flashDeskError(
+                error instanceof Error ? error.message : "Could not update office.",
+              );
+              void refreshIdentity();
+            });
+        }
         flashDeskSuccess(`Office marked ${status}.`);
       },
       removeOffice: (orgId, officeId, reason) => {
@@ -785,96 +1046,92 @@ export function DeskProvider({
             "Cannot remove an office that still has properties assigned. Reassign them first.",
           );
         } else {
+          const org0 = stateRef.current?.orgs.find((item) => item.id === orgId);
+          const nextOffices = (org0?.offices ?? []).filter(
+            (office) => office.id !== officeId,
+          );
+          deskClient
+            .patchOrgApi(orgId, { offices: nextOffices })
+            .catch((error) => {
+              flashDeskError(
+                error instanceof Error ? error.message : "Could not remove office.",
+              );
+              void refreshIdentity();
+            });
           flashDeskSuccess("Office removed.");
         }
       },
-      requestOrg: ({ company, contact, email, branch }) => {
-        const message = `${company.trim()} is requested. A platform admin will set it up.`;
-        setState((current) => {
-          if (!current) return current;
-          return {
-            ...current,
-            requests: [
-              {
-                id: `req-${globalThis.crypto.randomUUID()}`,
-                company: company.trim(),
-                contact: contact.trim(),
-                email: email.trim().toLowerCase(),
-                branch: branch.trim(),
-                status: "Requested",
-              },
-              ...current.requests,
-            ],
-          };
-        });
-        flashDeskSuccess(message);
-      },
-      decideRequest: (id, status) => {
-        let success: string | null = null;
-        setState((current) => {
-          if (!current) return current;
-          const request = current.requests.find((item) => item.id === id);
-          if (request?.status !== "Requested") return current;
-          const requests = current.requests.map((item) =>
-            item.id === id ? { ...item, status } : item,
+      requestOrg: async (input) => {
+        try {
+          const request = await orgRequestsClient.submitOrgRequestApi({
+            company: input.company.trim(),
+            contact: input.contact.trim(),
+            email: input.email.trim(),
+            phone: input.phone.trim(),
+            country: input.country.trim(),
+            branch: input.branch.trim(),
+            about: input.about.trim(),
+            memberYears: input.memberYears,
+            memberCount: input.memberCount,
+            minProperties: input.minProperties,
+          });
+          setState((current) =>
+            current
+              ? { ...current, requests: [request, ...current.requests] }
+              : current,
           );
-          if (status === "Declined") {
-            success = `${request.company} was declined. No organisation was created.`;
+          flashDeskSuccess(
+            `${request.company} is requested. A platform admin will set it up.`,
+          );
+        } catch (error) {
+          flashDeskError(
+            error instanceof Error
+              ? error.message
+              : "Could not submit this request.",
+          );
+          throw error;
+        }
+      },
+      decideRequest: async (id, status) => {
+        const request = stateRef.current?.requests.find((item) => item.id === id);
+        try {
+          const result = await orgRequestsClient.decideOrgRequestApi(id, status);
+          setState((current) => {
+            if (!current) return current;
+            const requests = current.requests.map((item) =>
+              item.id === id ? result.request : item,
+            );
+            if (status === "Declined") {
+              const message = `${result.request.company} was declined. No organisation was created.`;
+              return withAudit(
+                { ...current, requests },
+                `Declined organisation request ${result.request.company}`,
+                result.request.company,
+                message,
+              );
+            }
             return withAudit(
               { ...current, requests },
-              `Declined organisation request ${request.company}`,
-              request.company,
-              success,
+              `Approved organisation ${result.request.company}`,
+              result.request.company,
+              "",
+            );
+          });
+          if (status === "Declined") {
+            flashDeskSuccess(
+              `${result.request.company} was declined. No organisation was created.`,
+            );
+          } else {
+            await refreshIdentity();
+            flashDeskSuccess(
+              `${result.request.company} is in Setup. ${result.request.email} activates by entering their email on the org-admin sign-in page to set a password.`,
             );
           }
-          const orgId = `org-${globalThis.crypto.randomUUID()}`;
-          success = `${request.company} is in Setup with ${request.branch} as its first office. Invite sent to ${request.email}.`;
-          return withAudit(
-            {
-              ...current,
-              requests,
-              orgs: [
-                ...current.orgs,
-                {
-                  id: orgId,
-                  name: request.company,
-                  status: "Setup",
-                  offices: [seedOffice(orgId, request.branch)],
-                  modules: {
-                    Properties: true,
-                    Lettings: true,
-                    Compliance: true,
-                    Maintenance: true,
-                    Finance: false,
-                    Migration: false,
-                  },
-                  reason: "",
-                  legalName: request.company,
-                  companyNumber: "",
-                  billingEmail: request.email,
-                  settings: defaultOrgSettings(),
-                },
-              ],
-              users: [
-                ...current.users,
-                {
-                  id: `u-${globalThis.crypto.randomUUID()}`,
-                  name: request.contact,
-                  email: request.email,
-                  role: "Organisation Admin",
-                  scope: request.branch,
-                  status: "Invited",
-                  orgId,
-                  statusNote: "",
-                },
-              ],
-            },
-            `Approved organisation ${request.company}`,
-            request.company,
-            success,
+        } catch (error) {
+          flashDeskError(
+            error instanceof Error ? error.message : "Could not update request.",
           );
-        });
-        if (success) flashDeskSuccess(success);
+        }
       },
       saveSettings: (days) => {
         setState((current) =>
@@ -1231,7 +1488,7 @@ export function DeskProvider({
               ),
             },
             `Migration moved to ${stage}`,
-            "Northbridge Lettings",
+            "Migration",
             note,
           );
         });
@@ -1482,9 +1739,10 @@ export function DeskProvider({
             ],
           };
         });
-        flashDeskSuccess("Document uploaded (mock).");
+        flashDeskSuccess("Document uploaded.");
       },
       reportIssue: (category, detail) => {
+        const ref = `MT-${Date.now().toString().slice(-6)}`;
         setState((current) => {
           if (!current) return current;
           return {
@@ -1493,7 +1751,7 @@ export function DeskProvider({
               {
                 id: `j-${Date.now()}`,
                 title: category,
-                address: "22 Queen's Road",
+                address: detail.trim() || "—",
                 status: "Submitted",
                 quote: "",
                 assignee: "Unassigned",
@@ -1504,24 +1762,18 @@ export function DeskProvider({
             ],
           };
         });
-        flashDeskSuccess("Issue submitted. Reference MT-2041.");
+        flashDeskSuccess(`Issue submitted. Reference ${ref}.`);
       },
     }),
     [],
   );
 
-  if (!state) {
-    return (
-      <Work aria-busy="true">
-        <p className="kicker">Opening the desk</p>
-        <Shimmer size="lg" />
-      </Work>
-    );
-  }
+  const deskState = state ?? createSeed();
 
   return (
-    <DeskContext.Provider value={{ state, api }}>
+    <DeskContext.Provider value={{ state: deskState, api, viewer }}>
       {children}
+      {bootStep !== null ? <DeskBootFloating step={bootStep} /> : null}
     </DeskContext.Provider>
   );
 }

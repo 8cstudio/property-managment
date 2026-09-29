@@ -27,6 +27,10 @@ import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { type ReactNode, useState } from "react";
+import { attachMetricSeries } from "@/features/dashboard/metric-snapshots";
+import { Messenger } from "@/features/messages/messenger";
+import { assignableRoleLabels } from "./staff-roles";
+import { sanitizeAboutHtml } from "@/features/visit/about-html";
 import { isEmail } from "./auth";
 import {
   CreateListingWizard,
@@ -50,6 +54,7 @@ import {
 import type { DeskState } from "./data";
 import { orgOfficeNames } from "./data";
 import { managedOrgId } from "./org-scope";
+import { PlatformSettings } from "@/features/platform-brand/platform-settings";
 import { type DeskApi, useDesk } from "./store";
 import {
   applicantTableFilters,
@@ -113,9 +118,12 @@ export function RoleBody({
 }
 
 function Home({ role, base }: { role: string; base: string }) {
-  const { state } = useDesk();
+  const { state, viewer } = useDesk();
   const t = useTranslations("dash");
   const tc = useTranslations("col");
+  const chart = (
+    metrics: Parameters<typeof attachMetricSeries>[1],
+  ) => attachMetricSeries(state.metricSnapshots, metrics);
   if (role === "super-admin") {
     const failed = state.integrations.filter(
       (item) => item.status === "Failed",
@@ -125,7 +133,7 @@ function Home({ role, base }: { role: string; base: string }) {
         <UnifiedAnalyticsDeck
           title={t("platformPulse")}
           caption={t("platformPulseCaption")}
-          metrics={[
+          metrics={chart([
             {
               key: "orgs",
               href: `${base}/organisations`,
@@ -165,7 +173,7 @@ function Home({ role, base }: { role: string; base: string }) {
               label: t("mOrgRequests"),
               badge: "Inbox",
             },
-          ]}
+          ])}
           donuts={[
             {
               title: t("orgStatus"),
@@ -280,7 +288,7 @@ function Home({ role, base }: { role: string; base: string }) {
 
   if (role === "org-admin") {
     const org =
-      state.orgs.find((item) => item.id === "northbridge") ?? state.orgs[0];
+      state.orgs[0];
     const orgUsers = state.users.filter((user) => user.orgId === org?.id);
     const openWork = state.work.filter((item) => item.state !== "Resolved");
     return (
@@ -289,7 +297,7 @@ function Home({ role, base }: { role: string; base: string }) {
         <UnifiedAnalyticsDeck
           title={t("orgPulse")}
           caption={t("orgPulseCaption")}
-          metrics={[
+          metrics={chart([
             {
               key: "offices",
               href: `${base}/branches`,
@@ -318,7 +326,7 @@ function Home({ role, base }: { role: string; base: string }) {
               label: t("mOpenWork"),
               tone: "warn",
             },
-          ]}
+          ])}
         />
         <p className="hint">
           {t("officesLine", {
@@ -353,7 +361,7 @@ function Home({ role, base }: { role: string; base: string }) {
           <UnifiedAnalyticsDeck
             title={t("queuePulse")}
             caption={t("queuePulseCaption")}
-            metrics={[
+            metrics={chart([
               {
                 key: "overdue",
                 href: `${base}/exceptions`,
@@ -386,13 +394,13 @@ function Home({ role, base }: { role: string; base: string }) {
                   .length,
                 label: t("mResolved"),
               },
-            ]}
+            ])}
           />
         ) : (
           <UnifiedAnalyticsDeck
             title={t("portfolioPulse")}
             caption={t("portfolioPulseCaption")}
-            metrics={[
+            metrics={chart([
               {
                 key: "occupied",
                 href: `${base}`,
@@ -426,7 +434,7 @@ function Home({ role, base }: { role: string; base: string }) {
                 ).length,
                 label: t("mOnboarding"),
               },
-            ]}
+            ])}
           />
         )}
         {role === "operations" ? (
@@ -501,7 +509,7 @@ function Home({ role, base }: { role: string; base: string }) {
         <UnifiedAnalyticsDeck
           title={t("lettingsPulse")}
           caption={t("lettingsPulseCaption")}
-          metrics={[
+          metrics={chart([
             {
               key: "listings",
               href: `${base}`,
@@ -529,7 +537,7 @@ function Home({ role, base }: { role: string; base: string }) {
               label: t("mViewings"),
               badge: "Live",
             },
-          ]}
+          ])}
         />
         <DeskStack>
           <DeskToolbar
@@ -582,7 +590,7 @@ function Home({ role, base }: { role: string; base: string }) {
         <UnifiedAnalyticsDeck
           title={t("complianceRiver")}
           caption={t("complianceRiverCaption")}
-          metrics={[
+          metrics={chart([
             {
               key: "compliant",
               href: `${base}/certificates`,
@@ -598,14 +606,14 @@ function Home({ role, base }: { role: string; base: string }) {
               tone: "calm",
             },
             {
-              key: "overdue",
+              key: "certOverdue",
               href: `${base}/certificates`,
               value: overdue,
               label: t("mOverdueCert"),
               tone: "warn",
               badge: "Act",
             },
-          ]}
+          ])}
         />
         <DataTable
           caption={t("certificateQueue")}
@@ -648,7 +656,7 @@ function Home({ role, base }: { role: string; base: string }) {
         <UnifiedAnalyticsDeck
           title={t("cashDeskRiver")}
           caption={t("cashDeskRiverCaption")}
-          metrics={[
+          metrics={chart([
             {
               key: "unmatched",
               href: `${base}/payments`,
@@ -679,7 +687,7 @@ function Home({ role, base }: { role: string; base: string }) {
               label: t("mDraftStatements"),
               tone: "calm",
             },
-          ]}
+          ])}
         />
         <DataTable
           caption={t("paymentsDesk")}
@@ -714,7 +722,7 @@ function Home({ role, base }: { role: string; base: string }) {
         <UnifiedAnalyticsDeck
           title={t("importPulse")}
           caption={t("importPulseCaption")}
-          metrics={[
+          metrics={chart([
             {
               key: "mapped",
               href: `${base}`,
@@ -745,7 +753,7 @@ function Home({ role, base }: { role: string; base: string }) {
               value: state.migrations.length,
               label: t("mProjects"),
             },
-          ]}
+          ])}
         />
         <DeskStack>
           <DeskToolbar title={t("newProject")} description={t("newProjectDesc")}>
@@ -781,13 +789,17 @@ function Home({ role, base }: { role: string; base: string }) {
   }
 
   if (role === "landlord") {
-    const mine = state.properties.filter((item) => item.orgId === "harbour");
+    const who = viewer?.user.name?.trim() ?? "";
+    const mine = state.properties;
+    const myStatements = who
+      ? state.statements.filter((item) => item.landlord === who)
+      : state.statements;
     return (
       <Page kicker={t("yourPortfolio")} title={t("dashboard")}>
         <UnifiedAnalyticsDeck
           title={t("portfolioPulse")}
           caption={t("portfolioPulseCaption")}
-          metrics={[
+          metrics={chart([
             {
               key: "homes",
               href: `${base}`,
@@ -807,11 +819,11 @@ function Home({ role, base }: { role: string; base: string }) {
             {
               key: "statements",
               href: `${base}/statements`,
-              value: state.statements.length,
+              value: myStatements.length,
               label: t("mStatements"),
               tone: "calm",
             },
-          ]}
+          ])}
         />
         <DataTable
           caption={t("yourProperties")}
@@ -843,15 +855,24 @@ function Home({ role, base }: { role: string; base: string }) {
     const openSteps = state.onboarding.filter(
       (item) => item.state !== "Complete",
     ).length;
-    const myJobs = state.jobs.filter(
-      (item) => item.address.includes("Queen") || item.status === "Submitted",
+    const myJobs = state.jobs.filter((item) =>
+      ["Submitted", "Assigned", "Scheduled", "In progress"].includes(
+        item.status,
+      ),
     );
+    const rentSchedule =
+      state.rentSchedules.find((item) => item.status === "Active") ??
+      state.rentSchedules[0];
+    const tenancyKicker =
+      state.onboarding[0]?.summary?.trim() ||
+      state.properties[0]?.address ||
+      t("dashboard");
     return (
-      <Page kicker="22 Queen's Road" title={t("dashboard")}>
+      <Page kicker={tenancyKicker} title={t("dashboard")}>
         <UnifiedAnalyticsDeck
           title={t("tenancyPulse")}
           caption={t("tenancyPulseCaption")}
-          metrics={[
+          metrics={chart([
             {
               key: "steps",
               href: `${base}/onboarding`,
@@ -866,7 +887,7 @@ function Home({ role, base }: { role: string; base: string }) {
               label: t("mRepairItems"),
               tone: "calm",
             },
-          ]}
+          ])}
         />
         <section className="panel">
           <ul className="field-list">
@@ -876,7 +897,7 @@ function Home({ role, base }: { role: string; base: string }) {
             </li>
             <li>
               <span>{t("rentThisMonth")}</span>
-              <strong>£1,150</strong>
+              <strong>{rentSchedule?.amount ?? "—"}</strong>
             </li>
           </ul>
         </section>
@@ -892,18 +913,21 @@ function Home({ role, base }: { role: string; base: string }) {
     );
   }
 
-  const mine = state.jobs.filter(
-    (item) =>
-      item.assignee === "You" ||
-      item.status === "Assigned" ||
-      item.status === "Scheduled",
-  );
+  const assigneeKey =
+    viewer?.user.name?.trim() || viewer?.user.email?.trim() || "";
+  const mine = assigneeKey
+    ? state.jobs.filter(
+        (item) =>
+          item.assignee === assigneeKey ||
+          item.assignee === viewer?.user.email,
+      )
+    : [];
   return (
     <Page kicker={t("assignedToYou")} title={t("dashboard")}>
       <UnifiedAnalyticsDeck
         title={t("jobsPulse")}
         caption={t("jobsPulseCaption")}
-        metrics={[
+        metrics={chart([
           {
             key: "scheduled",
             href: `${base}`,
@@ -924,7 +948,7 @@ function Home({ role, base }: { role: string; base: string }) {
             label: t("mInView"),
             badge: "Live",
           },
-        ]}
+        ])}
       />
       <DataTable
         caption={t("yourJobs")}
@@ -960,6 +984,14 @@ function List({
   const { state, api } = useDesk();
   const t = useTranslations("list");
   const tc = useTranslations("col");
+
+  if (screen === "platform" && role === "super-admin") {
+    return <PlatformSettings />;
+  }
+
+  if (screen === "messages") {
+    return <Messenger role={role} />;
+  }
 
   if (screen === "organisations") {
     return (
@@ -1028,7 +1060,7 @@ function List({
   if (screen === "integrations") {
     const orgScope =
       role === "org-admin"
-        ? state.orgs.find((o) => o.id === "northbridge")?.id
+        ? state.orgs[0]?.id
         : null;
     const rows = state.integrations.filter((item) =>
       orgScope ? item.orgId === orgScope : true,
@@ -1179,10 +1211,10 @@ function List({
             emptyMessage={t("requestsEmpty")}
             searchPlaceholder={t("requestsSearch")}
             filters={requestTableFilters(state.requests)}
-            columns={[tc("company"), tc("office"), tc("contact"), tc("status")]}
+            columns={[tc("company"), tc("address"), tc("contact"), tc("status")]}
             rows={state.requests.map((item) => ({
               key: item.id,
-              searchText: `${item.company} ${item.branch} ${item.email} ${item.contact} ${item.status}`,
+              searchText: `${item.company} ${item.branch} ${item.email} ${item.phone} ${item.country} ${item.contact} ${item.status}`,
               filterValues: { status: item.status },
               cells: [
                 <Link
@@ -1516,7 +1548,9 @@ function List({
   if (screen === "documents") {
     const docs =
       role === "landlord" || role === "tenant"
-        ? state.documents.filter((row) => row.orgId === "harbour" || row.orgId === "northbridge")
+        ? state.documents.filter((row) =>
+            state.orgs.some((org) => org.id === row.orgId),
+          )
         : state.documents;
     return (
       <DocumentsPage role={role} docs={docs} api={api} />
@@ -1650,9 +1684,9 @@ function List({
           rows={[
             {
               label: t("profileName"),
-              value: role === "landlord" ? "Harbour portfolio" : "J. Adeyemi",
+              value: state.users[0]?.name ?? "—",
             },
-            { label: t("phone"), value: "07700 900123" },
+            { label: t("phone"), value: "—" },
             {
               label: t("change"),
               value: t("changeValue"),
@@ -1715,11 +1749,11 @@ function Detail({
 
   if (screen === "branches" && id === "new") {
     const org =
-      state.orgs.find((item) => item.id === "northbridge") ?? state.orgs[0];
+      state.orgs[0];
     return (
       <Page kicker={t("offices")} title={t("addOfficePage")}>
         <CreateOfficePanel
-          orgId={org?.id ?? "northbridge"}
+          orgId={org?.id ?? ""}
           base={`${base}/branches`}
         />
       </Page>
@@ -1833,6 +1867,7 @@ function Missing({ base }: { base: string }) {
 
 function RequestDetail({ id }: { id: string }) {
   const { state, api } = useDesk();
+  const { pending, run } = usePendingAction();
   const t = useTranslations("detail");
   const tf = useTranslations("forms");
   const tl = useTranslations("list");
@@ -1844,24 +1879,39 @@ function RequestDetail({ id }: { id: string }) {
         rows={[
           { label: tf("status"), value: item.status },
           { label: tl("contact2"), value: item.contact },
+          { label: tf("contactNumber"), value: item.phone || "—" },
           { label: tf("email"), value: item.email },
-          { label: t("firstOffice"), value: item.branch },
+          { label: tf("country"), value: item.country || "—" },
+          { label: tf("address"), value: item.branch || "—" },
         ]}
       />
+      {item.about ? (
+        <>
+          <p className="kicker">{tf("aboutCompany")}</p>
+          <div
+            className="request-about"
+            dangerouslySetInnerHTML={{
+              __html: sanitizeAboutHtml(item.about),
+            }}
+          />
+        </>
+      ) : null}
       {item.status === "Requested" ? (
         <div className="flow-actions">
           <AsyncButton
             type="button"
+            loading={pending}
             loadingText={t("approving")}
-            onClick={() => api.decideRequest(item.id, "Approved")}
+            onClick={() => void run(() => api.decideRequest(item.id, "Approved"))}
           >
             {t("approveAndCreate")}
           </AsyncButton>
           <AsyncButton
             type="button"
             variant="danger"
+            loading={pending}
             loadingText={t("declining")}
-            onClick={() => api.decideRequest(item.id, "Declined")}
+            onClick={() => void run(() => api.decideRequest(item.id, "Declined"))}
           >
             {t("decline")}
           </AsyncButton>
@@ -1908,9 +1958,14 @@ function Users({ base, orgWide }: { base: string; orgWide: boolean }) {
     const keys: Record<string, string> = {
       "Organisation Admin": tf("staffRole.orgAdmin"),
       Operations: tf("staffRole.operations"),
+      "Property Manager": tf("staffRole.property"),
       Lettings: tf("staffRole.lettings"),
       Compliance: tf("staffRole.compliance"),
       Finance: tf("staffRole.finance"),
+      "Migration Admin": tf("staffRole.migration"),
+      Landlord: tf("staffRole.landlord"),
+      Tenant: tf("staffRole.tenant"),
+      Contractor: tf("staffRole.contractor"),
     };
     return keys[value] ?? value;
   };
@@ -1931,28 +1986,18 @@ function Users({ base, orgWide }: { base: string; orgWide: boolean }) {
     scopedOrgId || !orgWide
       ? `${base}/users/${userId}?org=${encodeURIComponent(orgId)}`
       : `${base}/users/${userId}`;
-  const branchOptions =
-    org?.offices.map((office) => office.name) ?? [
-      "Peckham",
-      "Deptford",
-      "Greenwich",
-    ];
+  const branchOptions = org?.offices.map((office) => office.name) ?? [];
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("Lettings");
-  const [scope, setScope] = useState(branchOptions[0] ?? "Peckham");
+  const [scope, setScope] = useState(branchOptions[0] ?? "");
   const [errors, setErrors] = useState<{ name?: string; email?: string }>({});
   const canInvite =
     name.trim().length > 0 && isEmail(email.trim()) && !pending;
-  const roles = orgWide
-    ? ["Organisation Admin", "Operations", "Lettings", "Compliance", "Finance"]
-    : [
-        "Organisation Admin",
-        "Operations",
-        "Lettings",
-        "Compliance",
-        "Finance",
-      ];
+  const roles = assignableRoleLabels(org);
+  const roleFilterOptions = [
+    ...new Set([...roles, ...roster.map((user) => user.role)]),
+  ];
   return (
     <Page
       kicker={
@@ -2007,7 +2052,9 @@ function Users({ base, orgWide }: { base: string; orgWide: boolean }) {
                 if (!isEmail(mail)) next.email = tf("errors.validEmail");
                 else if (
                   state.users.some(
-                    (user) => user.email?.toLowerCase() === mail.toLowerCase(),
+                    (user) =>
+                      user.orgId === orgId &&
+                      user.email?.toLowerCase() === mail.toLowerCase(),
                   )
                 ) {
                   next.email = tf("errors.emailTaken");
@@ -2091,13 +2138,7 @@ function Users({ base, orgWide }: { base: string; orgWide: boolean }) {
               label: tf("role"),
               options: [
                 { value: "", label: tf("allRoles") },
-                ...[
-                  "Organisation Admin",
-                  "Operations",
-                  "Lettings",
-                  "Compliance",
-                  "Finance",
-                ].map((label) => ({
+                ...roleFilterOptions.map((label) => ({
                   value: label,
                   label: staffRoleLabel(label),
                 })),
@@ -2167,8 +2208,7 @@ function Branches({ base }: { base: string }) {
   const tf = useTranslations("forms");
   const tc = useTranslations("col");
   const tl = useTranslations("list");
-  const org =
-    state.orgs.find((item) => item.id === "northbridge") ?? state.orgs[0];
+  const org = state.orgs[0];
   if (!org) return null;
   return (
     <Page kicker={org.name} title={td("offices")}>
@@ -2565,14 +2605,14 @@ function DocumentsPage({
   docs: DeskState["documents"];
   api: DeskApi;
 }) {
+  const { state } = useDesk();
   const td = useTranslations("detail");
   const tf = useTranslations("forms");
   const tc = useTranslations("col");
   const [name, setName] = useState("");
   const [type, setType] = useState("PDF");
   const [linkedTo, setLinkedTo] = useState("");
-  const orgId =
-    role === "landlord" ? "harbour" : role === "tenant" ? "northbridge" : "northbridge";
+  const orgId = state?.orgs[0]?.id ?? "";
   const docTypeLabel = (value: string) => {
     const map: Record<string, string> = {
       PDF: tf("docType.pdf"),

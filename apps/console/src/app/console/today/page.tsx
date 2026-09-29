@@ -1,4 +1,7 @@
+"use client";
+
 import { Dashboard } from "@/features/dashboard/dashboard";
+import { DeskProvider } from "@/features/workspace/store";
 
 export default function TodayPage() {
   const today = new Intl.DateTimeFormat("en-GB", {
@@ -8,5 +11,9 @@ export default function TodayPage() {
     timeZone: "Europe/London",
   }).format(new Date());
 
-  return <Dashboard today={today} />;
+  return (
+    <DeskProvider role="operations">
+      <Dashboard today={today} />
+    </DeskProvider>
+  );
 }

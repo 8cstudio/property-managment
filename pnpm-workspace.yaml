@@ -56,7 +56,20 @@ catalog:
   "@tanstack/react-query": 5.103.2
   recharts: 3.10.1
   motion: 13.4.4
+  lottie-react: 2.4.1
   next-intl: 4.14.7
+  "@tiptap/react": 3.31.3
+  "@tiptap/pm": 3.31.3
+  "@tiptap/starter-kit": 3.31.3
+  "@tiptap/extension-link": 3.31.3
+  "@tiptap/extension-placeholder": 3.31.3
+  "@tiptap/extension-bubble-menu": 3.31.3
+  "@tiptap/extension-text-style": 3.31.3
+  "@tiptap/extension-color": 3.31.3
+  "@tiptap/extension-font-family": 3.31.3
+  "@tiptap/extension-highlight": 3.31.3
+  "@tiptap/extension-text-align": 3.31.3
+  "@tiptap/extension-table": 3.31.3
   "@opentelemetry/api": 1.9.1
   "@sentry/nextjs": 11.0.0
   "@react-email/components": 1.0.12

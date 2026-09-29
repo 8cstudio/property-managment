@@ -1,7 +1,6 @@
 "use client";
 
 import type { LucideIcon } from "lucide-react";
-import { motion } from "motion/react";
 import Link from "next/link";
 import { SparkLine } from "../charts/spark-line";
 
@@ -41,18 +40,13 @@ export function KpiStatGrid({
       className={plate ? "kpi-grid kpi-grid--plate" : "kpi-grid"}
       {...(plate ? { "data-count": String(items.length) } : {})}
     >
-      {items.map((item, index) => {
+      {items.map((item) => {
         const Icon = item.icon;
         const series = item.series ?? seriesFromValue(item.value);
         const tone = item.tone ?? "accent";
 
         return (
-          <motion.li
-            key={item.label}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.04, duration: 0.3 }}
-          >
+          <li key={item.label}>
             <Link
               className={`kpi-card kpi-card--${tone}${plate ? " kpi-card--plate" : ""}`}
               href={item.href}
@@ -71,7 +65,7 @@ export function KpiStatGrid({
               <span className="kpi-card__label">{item.label}</span>
               <SparkLine data={series} height={plate ? 52 : 44} />
             </Link>
-          </motion.li>
+          </li>
         );
       })}
     </ul>

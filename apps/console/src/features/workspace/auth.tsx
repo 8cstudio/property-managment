@@ -4,13 +4,20 @@ import { AuthShell, Button, FieldError, Hint } from "@ezzi/ui";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import {
-  type FormEvent,
-  useEffect,
-  useState,
-  useTransition,
-} from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { canRegister, needsVerify, requiresMfa, roleName } from "./roles";
+import {
+  apiAccountState,
+  apiActivate,
+  apiRegister,
+  apiGetSession,
+  apiSignIn,
+  bridgeIdentity,
+  clearBridgeIdentity,
+  roleAllowed,
+} from "./session-client";
+
+type SignInStep = "email" | "password" | "activate";
 
 export function isEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
@@ -37,6 +44,7 @@ export function AuthPanel({
 }) {
   const router = useRouter();
   const t = useTranslations("auth");
+  const tc = useTranslations("common");
   const tf = useTranslations("forms");
   const register = canRegister(role);
   const [email, setEmail] = useState("");
@@ -45,10 +53,17 @@ export function AuthPanel({
   const [confirm, setConfirm] = useState("");
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
-  const [pending, startTransition] = useTransition();
+  const [pending, setPending] = useState(false);
+  const [signInStep, setSignInStep] = useState<SignInStep>("email");
 
+  const canContinueEmail = isEmail(email) && !pending;
   const canSignIn =
     isEmail(email) && password.trim().length >= 8 && !pending;
+  const canActivate =
+    isEmail(email) &&
+    password.length >= 8 &&
+    password === confirm &&
+    !pending;
   const registerReady =
     name.trim().length > 0 &&
     isEmail(email) &&
@@ -56,6 +71,7 @@ export function AuthPanel({
     password === confirm &&
     !pending;
   const canVerify = /^\d{6}$/.test(code.trim()) && !pending;
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     if (mode === "register" && !register) {
@@ -70,18 +86,90 @@ export function AuthPanel({
       router.replace(`/role/${role}/sign-in`);
       return;
     }
-    const signedIn = sessionStorage.getItem(authKey(role));
-    if (signedIn && mode === "sign-in") {
-      router.replace(`/role/${role}`);
+
+    let active = true;
+    if (mode === "sign-in") {
+      setReady(true);
+      void apiGetSession()
+        .then((viewer) => {
+          if (!active) return;
+          if (viewer && roleAllowed(viewer, role)) {
+            bridgeIdentity(role, viewer);
+            router.replace(`/role/${role}`);
+            return;
+          }
+          clearBridgeIdentity(role);
+        })
+        .catch(() => clearBridgeIdentity(role));
+    } else {
+      void (async () => {
+        if (mode === "mfa") {
+          try {
+            const viewer = await apiGetSession();
+            if (!active) return;
+            const mfaOk = Boolean(sessionStorage.getItem(mfaKey(role)));
+            if (viewer && roleAllowed(viewer, role) && mfaOk) {
+              bridgeIdentity(role, viewer);
+              router.replace(`/role/${role}`);
+              return;
+            }
+          } catch {
+            /* show mfa form */
+          }
+        }
+        if (active) setReady(true);
+      })();
     }
-    if (signedIn && mode === "mfa" && sessionStorage.getItem(mfaKey(role))) {
-      router.replace(`/role/${role}`);
-    }
+
+    return () => {
+      active = false;
+    };
   }, [mode, register, role, router]);
 
-  function signIn(event: FormEvent) {
+  function resetSignInFlow() {
+    setSignInStep("email");
+    setPassword("");
+    setConfirm("");
+    setError("");
+  }
+
+  async function continueWithEmail(event: FormEvent) {
     event.preventDefault();
-    if (!canSignIn) return;
+    if (!isEmail(email)) {
+      setError(tf("errors.validEmail"));
+      return;
+    }
+    setError("");
+    setPending(true);
+    try {
+      const access = await apiAccountState(email.trim(), role);
+      if (access.state === "unknown") {
+        setError(t("emailNotRecognised"));
+        return;
+      }
+      if (!access.portalAllowed && access.roles.length > 0) {
+        setError(t("wrongPortalForRoles"));
+        return;
+      }
+      if (access.state === "active") {
+        setSignInStep("password");
+        setPassword("");
+      } else if (access.state === "invited") {
+        setSignInStep("activate");
+        setPassword("");
+        setConfirm("");
+      } else {
+        setError(t("emailNotRecognised"));
+      }
+    } catch {
+      setError(t("emailNotRecognised"));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function signIn(event: FormEvent) {
+    event.preventDefault();
     if (!isEmail(email)) {
       setError(tf("errors.validEmail"));
       return;
@@ -91,16 +179,58 @@ export function AuthPanel({
       return;
     }
     setError("");
-    startTransition(() => {
-      sessionStorage.setItem(authKey(role), email.trim().toLowerCase());
-      sessionStorage.removeItem(mfaKey(role));
-      router.push(
-        requiresMfa(role) ? `/role/${role}/mfa` : `/role/${role}`,
-      );
-    });
+    setPending(true);
+    try {
+      const viewer = await apiSignIn(email.trim(), password, role);
+      if (!roleAllowed(viewer, role)) {
+        setError(
+          `This account does not have access to the ${roleName(role)} area.`,
+        );
+        setPending(false);
+        return;
+      }
+      bridgeIdentity(role, viewer);
+      router.push(`/role/${role}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Sign in failed.");
+      setPending(false);
+    }
   }
 
-  function createAccount(event: FormEvent) {
+  async function activateInvited(event: FormEvent) {
+    event.preventDefault();
+    if (!isEmail(email)) {
+      setError(tf("errors.validEmail"));
+      return;
+    }
+    if (password.length < 8) {
+      setError(tf("errors.passwordMin"));
+      return;
+    }
+    if (password !== confirm) {
+      setError(tf("errors.passwordsMismatch"));
+      return;
+    }
+    setError("");
+    setPending(true);
+    try {
+      const viewer = await apiActivate(email.trim(), password, role);
+      if (!roleAllowed(viewer, role)) {
+        setError(
+          `This account does not have access to the ${roleName(role)} area.`,
+        );
+        setPending(false);
+        return;
+      }
+      bridgeIdentity(role, viewer);
+      router.push(`/role/${role}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Activation failed.");
+      setPending(false);
+    }
+  }
+
+  async function createAccount(event: FormEvent) {
     event.preventDefault();
     if (!name.trim()) {
       setError(tf("errors.enterName"));
@@ -118,23 +248,20 @@ export function AuthPanel({
       setError(tf("errors.passwordsMismatch"));
       return;
     }
-    const mail = email.trim().toLowerCase();
-    if (needsVerify(role)) {
-      setError("");
-      startTransition(() => {
-        sessionStorage.setItem(pendingKey(role), mail);
-        router.push(`/role/${role}/verify`);
-      });
-      return;
-    }
     setError("");
-    startTransition(() => {
-      sessionStorage.setItem(authKey(role), mail);
-      sessionStorage.removeItem(mfaKey(role));
-      router.push(
-        requiresMfa(role) ? `/role/${role}/mfa` : `/role/${role}`,
-      );
-    });
+    setPending(true);
+    try {
+      const viewer = await apiRegister({
+        name: name.trim(),
+        email: email.trim(),
+        password,
+      });
+      bridgeIdentity(role, viewer);
+      router.push(`/role/${role}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not create account.");
+      setPending(false);
+    }
   }
 
   function verifyMfa(event: FormEvent) {
@@ -148,10 +275,9 @@ export function AuthPanel({
       return;
     }
     setError("");
-    startTransition(() => {
-      sessionStorage.setItem(mfaKey(role), "1");
-      router.push(`/role/${role}`);
-    });
+    setPending(true);
+    sessionStorage.setItem(mfaKey(role), "1");
+    router.push(`/role/${role}`);
   }
 
   function verify(event: FormEvent) {
@@ -166,11 +292,10 @@ export function AuthPanel({
       return;
     }
     setError("");
-    startTransition(() => {
-      sessionStorage.setItem(authKey(role), pending);
-      sessionStorage.removeItem(pendingKey(role));
-      router.push(`/role/${role}`);
-    });
+    setPending(true);
+    sessionStorage.setItem(authKey(role), pending);
+    sessionStorage.removeItem(pendingKey(role));
+    router.push(`/role/${role}`);
   }
 
   const title =
@@ -182,12 +307,22 @@ export function AuthPanel({
           ? role === "org-admin"
             ? t("createPassword")
             : t("createAccount")
-          : t("signIn");
+          : mode === "sign-in" && signInStep === "activate"
+            ? t("activateAccount")
+            : t("signIn");
+
+  if (!ready) {
+    return (
+      <AuthShell roleLabel={roleName(role)} title={title}>
+        <Hint>{tc("checkingAccess")}</Hint>
+      </AuthShell>
+    );
+  }
 
   return (
     <AuthShell roleLabel={roleName(role)} title={title}>
-      {mode === "sign-in" ? (
-        <form className="form form--auth" noValidate onSubmit={signIn}>
+      {mode === "sign-in" && signInStep === "email" ? (
+        <form className="form form--auth" noValidate onSubmit={continueWithEmail}>
           <label>
             {tf("email")}
             <input
@@ -198,6 +333,32 @@ export function AuthPanel({
               required
             />
           </label>
+          {error ? <FieldError>{error}</FieldError> : null}
+          <Button
+            type="submit"
+            className="auth-submit"
+            loading={pending}
+            disabled={!canContinueEmail}
+            loadingText={t("checking")}
+          >
+            {t("continueWithEmail")}
+          </Button>
+          {register ? (
+            <Link className="text-link" href={`/role/${role}/register`}>
+              {role === "org-admin"
+                ? t("firstTimePassword")
+                : t("createAccount")}
+            </Link>
+          ) : (
+            <Hint>
+              {role === "super-admin" ? t("hintSuperAdmin") : t("hintStaff")}
+            </Hint>
+          )}
+        </form>
+      ) : null}
+      {mode === "sign-in" && signInStep === "password" ? (
+        <form className="form form--auth" noValidate onSubmit={signIn}>
+          <p className="hint">{email}</p>
           <label>
             {tf("password")}
             <input
@@ -218,17 +379,56 @@ export function AuthPanel({
           >
             {t("signIn")}
           </Button>
-          {register ? (
-            <Link className="text-link" href={`/role/${role}/register`}>
-              {role === "org-admin"
-                ? t("firstTimePassword")
-                : t("createAccount")}
-            </Link>
-          ) : (
-            <Hint>
-              {role === "super-admin" ? t("hintSuperAdmin") : t("hintStaff")}
-            </Hint>
-          )}
+          <button
+            type="button"
+            className="text-link"
+            onClick={resetSignInFlow}
+          >
+            {t("changeEmail")}
+          </button>
+        </form>
+      ) : null}
+      {mode === "sign-in" && signInStep === "activate" ? (
+        <form className="form form--auth" noValidate onSubmit={activateInvited}>
+          <Hint>{t("activateHint")}</Hint>
+          <p className="hint">{email}</p>
+          <label>
+            {tf("password")}
+            <input
+              type="password"
+              value={password}
+              autoComplete="new-password"
+              onChange={(event) => setPassword(event.target.value)}
+              required
+            />
+          </label>
+          <label>
+            {tf("confirmPassword")}
+            <input
+              type="password"
+              value={confirm}
+              autoComplete="new-password"
+              onChange={(event) => setConfirm(event.target.value)}
+              required
+            />
+          </label>
+          {error ? <FieldError>{error}</FieldError> : null}
+          <Button
+            type="submit"
+            className="auth-submit"
+            loading={pending}
+            disabled={!canActivate}
+            loadingText={t("activating")}
+          >
+            {t("activateAccount")}
+          </Button>
+          <button
+            type="button"
+            className="text-link"
+            onClick={resetSignInFlow}
+          >
+            {t("changeEmail")}
+          </button>
         </form>
       ) : null}
       {mode === "register" ? (

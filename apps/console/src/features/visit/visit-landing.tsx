@@ -5,6 +5,7 @@ import { Building2, KeyRound, ShieldCheck, Users } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { APP_DISPLAY_NAME } from "@/i18n/brand";
+import { usePlatformBrand } from "@/features/platform-brand/brand-provider";
 
 const boardData = [
   {
@@ -26,6 +27,7 @@ const boardData = [
 
 export function VisitLanding() {
   const t = useTranslations("visit");
+  const brand = usePlatformBrand();
 
   const board = boardData.map((item) => ({
     ...item,
@@ -103,7 +105,7 @@ export function VisitLanding() {
       <section className="visit-overlap-wrap" aria-labelledby="visit-intro-title">
         <div className="visit-overlap">
           <div className="visit-intro">
-            <h2 id="visit-intro-title">{APP_DISPLAY_NAME}</h2>
+            <h2 id="visit-intro-title">{brand.name || APP_DISPLAY_NAME}</h2>
             <p>{t("introBody")}</p>
             <ul className="visit-intro-stats">
               <li>

@@ -17,6 +17,8 @@ import { localeLabels, locales } from "@/i18n/config";
 import { isEmail } from "../auth";
 import { useDesk } from "../store";
 import { RecordTabs } from "./record-tabs";
+import { OrgStaffRolesForm } from "./org-staff-roles-form";
+import { assignableRoleLabels } from "../staff-roles";
 
 const tabIds = [
   "overview",
@@ -429,13 +431,7 @@ export function OrgDetailPanel({
                 value={inviteRole}
                 onChange={(event) => setInviteRole(event.target.value)}
               >
-                {[
-                  "Organisation Admin",
-                  "Operations",
-                  "Lettings",
-                  "Compliance",
-                  "Finance",
-                ].map((value) => (
+                {assignableRoleLabels(org).map((value) => (
                   <option key={value}>{value}</option>
                 ))}
               </select>
@@ -649,6 +645,8 @@ export function OrgDetailPanel({
           </Button>
         </form>
       ) : null}
+
+      {tab === "settings" ? <OrgStaffRolesForm org={org} /> : null}
 
       {tab === "activity" ? (
         <DataTable

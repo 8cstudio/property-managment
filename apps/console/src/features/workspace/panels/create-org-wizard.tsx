@@ -26,6 +26,7 @@ export function CreateOrgWizard({ base }: { base: string }) {
   const [name, setName] = useState("");
   const [branch, setBranch] = useState("");
   const [admin, setAdmin] = useState("");
+  const [adminName, setAdminName] = useState("");
   const [modules, setModules] = useState<Record<string, boolean>>({
     Properties: true,
     Lettings: true,
@@ -52,8 +53,10 @@ export function CreateOrgWizard({ base }: { base: string }) {
     if (current === 1 && !branch.trim()) {
       next.branch = tf("errors.branchNameRequired");
     }
-    if (current === 2 && !isEmail(admin.trim())) {
-      next.admin = tf("errors.adminEmailRequired");
+    if (current === 2) {
+      if (!isEmail(admin.trim())) {
+        next.admin = tf("errors.adminEmailRequired");
+      }
     }
     setErrors(next);
     return Object.keys(next).length === 0;
@@ -144,6 +147,14 @@ export function CreateOrgWizard({ base }: { base: string }) {
           }}
         >
           <label>
+            {tf("name")}
+            <input
+              value={adminName}
+              autoComplete="name"
+              onChange={(event) => setAdminName(event.target.value)}
+            />
+          </label>
+          <label>
             {tf("organisationAdminEmail")}
             <input
               type="email"
@@ -154,6 +165,11 @@ export function CreateOrgWizard({ base }: { base: string }) {
             />
           </label>
           {errors.admin ? <p className="field-error">{errors.admin}</p> : null}
+          <p className="hint">
+            No email is sent. The admin activates by entering this email on the
+            sign-in page, where they set their own password. If the email
+            already belongs to an EZZI user, they are added as admin right away.
+          </p>
           <div className="flow-actions">
             <Button type="button" variant="ghost" onClick={() => setStep(1)}>
               {tf("back")}
@@ -226,16 +242,18 @@ export function CreateOrgWizard({ base }: { base: string }) {
               loadingText={tf("loading.creating")}
               onClick={() =>
                 void run(async () => {
-                  api.createOrg({
+                  await api.createOrg({
                     name: name.trim(),
                     branch: branch.trim(),
                     admin: admin.trim(),
+                    adminName: adminName.trim(),
                     modules,
                   });
                   setStep(0);
                   setName("");
                   setBranch("");
                   setAdmin("");
+                  setAdminName("");
                 })
               }
             >

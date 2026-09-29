@@ -4,12 +4,6 @@ export type MetricHistoryInput = {
   series?: readonly number[];
 };
 
-function seedFromKey(key: string): number {
-  let seed = 0;
-  for (const char of key) seed += char.charCodeAt(0);
-  return seed;
-}
-
 function resampleSeries(
   series: readonly number[],
   points: number,
@@ -50,25 +44,6 @@ export function buildMetricDailyHistory(
     }
   }
 
-  const seed = seedFromKey(metric.key);
-  const scale = Math.max(target, 1);
-  const amplitude = Math.max(2, Math.ceil(scale * 0.55));
-
-  return Array.from({ length: points }, (_, index) => {
-    if (index === points - 1) return target;
-
-    const w1 = Math.sin(index * 0.47 + seed * 0.11);
-    const w2 = Math.sin(index * 1.05 + seed * 0.07) * 0.65;
-    const w3 = Math.cos(index * 0.23 + seed * 0.05) * 0.4;
-    const wave = (w1 + w2 + w3) / 2.05;
-
-    const center = target + scale * 0.1;
-    let value = Math.round(center + wave * amplitude);
-
-    if (index % 5 === seed % 5) {
-      value += index % 2 === 0 ? 1 : -1;
-    }
-
-    return Math.max(0, value);
-  });
+  // No recorded history: flat line at the live value (never decorate with fake trends).
+  return Array.from({ length: points }, () => target);
 }
